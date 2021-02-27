@@ -29,7 +29,7 @@ data_interact_ops = {'first': lambda x: x[0],      # retrieves the first element
                      'last': lambda x: x[-1],      # retrieves the last element of a list or vector e
                      'rest': lambda x: x[1:],      # retrieves the rest of the element of a list except the first one
                      'get': lambda x, idx: _get(x, idx),              # retrieves an element at index e2 from a list or vector e1, or the element at key e2 from a hash map e1.
-                     'append': lambda x, y: _append(x, y),           # (append e1 e2) appends e2 to the end of a list or vector e1
+                     'append': lambda x, y: _append(x, y),            # (append e1 e2) appends e2 to the end of a list or vector e1
                      'remove': lambda x, idx: _remove(x, idx),        # (remove e1 e2) removes the element at index/key e2 with the value e2 in a vector or hash-map e1.
                      'put': lambda x, idx, value: _put(x, idx, value) # (put e1 e2 e3) replaces the element at index/key e2 with the value e3 in a vector or hash-map e1.
 }
@@ -656,7 +656,7 @@ def run_probabilistic_tests():
 #------------------------------MAIN--------------------------------------------
 if __name__ == '__main__':
     # Change the path
-    daphne_path = '/Users/tony/Documents/prog-prob/CS539-HW-2'
+    program_path = '/Users/tony/Documents/prog-prob/CS539-HW-3'
 
     # Uncomment the appropriate tests to run
     # Deterministic Test
@@ -665,155 +665,155 @@ if __name__ == '__main__':
     # Probabilistic Test
     # run_probabilistic_tests()
 
-    #for i in range(1,5):
-    for i in range(4,5):
+    # for i in range(1,5):
+    for i in range(1,2):
         # Note: this path should be with respect to the daphne path!
-        # ast = daphne(['desugar', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
-        # ast_path = f'./jsons/tests/final/{i}.json'
+        # ast = daphne(['desugar', '-i', f'{program_path}/src/programs/{i}.daphne'])
+        # ast_path = f'./jsons/HW3/eval/{i}.json'
         # with open(ast_path, 'w') as fout:
         #     json.dump(ast, fout, indent=2)
-        # print('\n\n\nSample of prior of program {}:'.format(i))
+        # print('\n\n\nSample of posterior of program {}:'.format(i))
 
-        if i == 1:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/tests/final/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
+        # if i == 1:
+        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+        #     ast_path = f'./jsons/tests/final/{i}.json'
+        #     with open(ast_path) as json_file:
+        #         ast = json.load(json_file)
+        #     # print(ast)
+        #
+        #     print("Single Run Evaluation: ")
+        #     ret, sig = evaluate_program(ast)
+        #     print("Evaluation Output: ", ret)
+        #     print("\n")
+        #
+        #     print("Expectation: ")
+        #     stream = get_stream(ast)
+        #     samples = []
+        #     for k in range(1000):
+        #         samples.append(next(stream))
+        #
+        #     # print(samples)
+        #     all_samples = torch.tensor(samples)
+        #
+        #     # print("Evaluation Output: ", all_samples)
+        #     print("Mean of 1000 samples: ", torch.mean(all_samples))
+        #     print("\n")
+        #
+        #     # Empty globals funcs
+        #     rho = {}
 
-            print("Single Run Evaluation: ")
-            ret, sig = evaluate_program(ast)
-            print("Evaluation Output: ", ret)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(ast)
-            samples = []
-            for k in range(1000):
-                samples.append(next(stream))
-
-            # print(samples)
-            all_samples = torch.tensor(samples)
-
-            # print("Evaluation Output: ", all_samples)
-            print("Mean of 1000 samples: ", torch.mean(all_samples))
-            print("\n")
-
-            # Empty globals funcs
-            rho = {}
-
-        elif i == 2:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/tests/final/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
-            # print(len(ast))
-
-            print("Single Run Evaluation: ")
-            ret, sig = evaluate_program(ast)
-            print("Evaluation Output: ", ret)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(ast)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    samples = samples.unsqueeze(0)
-                    print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    sample  = sample.unsqueeze(0)
-                    samples = torch.cat((samples, sample), dim=0)
-            print("Evaluation Output: ", samples.shape)
-            print("Mean of 1000 samples: ", torch.mean(samples, dim=0))
-            print("\n")
-
-            # print(samples)
-            fig, (ax1, ax2) = plt.subplots(2, 1)
-            ax1.hist([a[0] for a in samples])
-            ax2.hist([a[1] for a in samples])
-            plt.savefig(f'plots/2.png')
-
-            # Empty globals funcs
-            rho = {}
-
-        elif i == 3:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/tests/final/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
-            # print("Single Run Evaluation: ")
-            # ret, sig = evaluate_program(ast)
-            # print("Evaluation Output: ", ret)
-            # print("\n")
-
-            print("Expectation: ")
-            stream  = get_stream(ast)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    samples = samples.unsqueeze(0)
-                    # print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    sample  = sample.unsqueeze(0)
-                    samples = torch.cat((samples, sample), dim=0)
-            # print(samples)
-            print("Evaluation Output: ", samples.shape)
-            print("Mean of 1000 samples for each HMM step: \n", torch.mean(samples, dim=0))
-            print("\n")
-
-            fig, axs = plt.subplots(3,6)
-            png = [axs[i//6,i%6].hist([a[i] for a in samples]) for i in range(17)]
-            plt.tight_layout()
-            plt.savefig(f'plots/p3.png')
-
-            # Empty globals funcs
-            rho = {}
-
-        elif i == 4:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/tests/final/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
-
-            # print("Single Run Evaluation: ")
-            # ret, sig = evaluate_program(ast)
-            # print("Evaluation Output: ", ret.shape)
-            # print("\n")
-
-            print("Expectation: ")
-            stream  = get_stream(ast)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    samples = samples.unsqueeze(0)
-                    # print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    sample  = sample.unsqueeze(0)
-                    samples = torch.cat((samples, sample), dim=0)
-            # print(samples)
-            print("Evaluation Output: ", samples.shape)
-            W_0 = samples[:, 0:10]
-            b_0 = samples[:, 10:20]
-            W_1 = samples[:, 20:120]
-            b_1 = samples[:, 120:]
-
-            print("W_0: ", W_0.shape)
-            print("b_0: ", b_0.shape)
-            print("W_1: ", W_1.shape)
-            print("b_1: ", b_1.shape)
-            print("Mean of 1000 samples for each Neural Network weight(s): \n", torch.mean(samples, dim=0))
-            print("\n")
-
-            # Empty globals funcs
-            rho = {}
+        # elif i == 2:
+        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+        #     ast_path = f'./jsons/tests/final/{i}.json'
+        #     with open(ast_path) as json_file:
+        #         ast = json.load(json_file)
+        #     # print(ast)
+        #     # print(len(ast))
+        #
+        #     print("Single Run Evaluation: ")
+        #     ret, sig = evaluate_program(ast)
+        #     print("Evaluation Output: ", ret)
+        #     print("\n")
+        #
+        #     print("Expectation: ")
+        #     stream = get_stream(ast)
+        #     samples = []
+        #     for k in range(1000):
+        #         if k == 0:
+        #             samples = next(stream)
+        #             samples = samples.unsqueeze(0)
+        #             print(samples.shape)
+        #         else:
+        #             sample  = next(stream)
+        #             sample  = sample.unsqueeze(0)
+        #             samples = torch.cat((samples, sample), dim=0)
+        #     print("Evaluation Output: ", samples.shape)
+        #     print("Mean of 1000 samples: ", torch.mean(samples, dim=0))
+        #     print("\n")
+        #
+        #     # print(samples)
+        #     fig, (ax1, ax2) = plt.subplots(2, 1)
+        #     ax1.hist([a[0] for a in samples])
+        #     ax2.hist([a[1] for a in samples])
+        #     plt.savefig(f'plots/2.png')
+        #
+        #     # Empty globals funcs
+        #     rho = {}
+        #
+        # elif i == 3:
+        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+        #     ast_path = f'./jsons/tests/final/{i}.json'
+        #     with open(ast_path) as json_file:
+        #         ast = json.load(json_file)
+        #     # print(ast)
+        #     # print("Single Run Evaluation: ")
+        #     # ret, sig = evaluate_program(ast)
+        #     # print("Evaluation Output: ", ret)
+        #     # print("\n")
+        #
+        #     print("Expectation: ")
+        #     stream  = get_stream(ast)
+        #     samples = []
+        #     for k in range(1000):
+        #         if k == 0:
+        #             samples = next(stream)
+        #             samples = samples.unsqueeze(0)
+        #             # print(samples.shape)
+        #         else:
+        #             sample  = next(stream)
+        #             sample  = sample.unsqueeze(0)
+        #             samples = torch.cat((samples, sample), dim=0)
+        #     # print(samples)
+        #     print("Evaluation Output: ", samples.shape)
+        #     print("Mean of 1000 samples for each HMM step: \n", torch.mean(samples, dim=0))
+        #     print("\n")
+        #
+        #     fig, axs = plt.subplots(3,6)
+        #     png = [axs[i//6,i%6].hist([a[i] for a in samples]) for i in range(17)]
+        #     plt.tight_layout()
+        #     plt.savefig(f'plots/p3.png')
+        #
+        #     # Empty globals funcs
+        #     rho = {}
+        #
+        # elif i == 4:
+        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+        #     ast_path = f'./jsons/tests/final/{i}.json'
+        #     with open(ast_path) as json_file:
+        #         ast = json.load(json_file)
+        #     # print(ast)
+        #
+        #     # print("Single Run Evaluation: ")
+        #     # ret, sig = evaluate_program(ast)
+        #     # print("Evaluation Output: ", ret.shape)
+        #     # print("\n")
+        #
+        #     print("Expectation: ")
+        #     stream  = get_stream(ast)
+        #     samples = []
+        #     for k in range(1000):
+        #         if k == 0:
+        #             samples = next(stream)
+        #             samples = samples.unsqueeze(0)
+        #             # print(samples.shape)
+        #         else:
+        #             sample  = next(stream)
+        #             sample  = sample.unsqueeze(0)
+        #             samples = torch.cat((samples, sample), dim=0)
+        #     # print(samples)
+        #     print("Evaluation Output: ", samples.shape)
+        #     W_0 = samples[:, 0:10]
+        #     b_0 = samples[:, 10:20]
+        #     W_1 = samples[:, 20:120]
+        #     b_1 = samples[:, 120:]
+        #
+        #     print("W_0: ", W_0.shape)
+        #     print("b_0: ", b_0.shape)
+        #     print("W_1: ", W_1.shape)
+        #     print("b_1: ", b_1.shape)
+        #     print("Mean of 1000 samples for each Neural Network weight(s): \n", torch.mean(samples, dim=0))
+        #     print("\n")
+        #
+        #     # Empty globals funcs
+        #     rho = {}
 #-------------------------------------------------------------------------------
