@@ -10,6 +10,7 @@ from tests import is_tol, run_prob_test,load_truth
 
 # OPS
 env = PRIMITIVES
+DEBUG = True # Set to true to see intermediate outputs for debugging purposes
 #----------------------------Evaluation Functions -----------------------------#
 def deterministic_eval(exp):
     "Evaluation function for the deterministic target language of the graph based representation."
@@ -67,11 +68,18 @@ def sample_from_joint(graph):
         keyword = links[node][0]
         if keyword == "sample*":
             link_expr = links[node][1]
+            if DEBUG:
+                print('Link Expression without parent vals: ', link_expr)
             link_expr = plugin_parent_values(link_expr, trace)
+            if DEBUG:
+                print('Link Expression: ', link_expr)
             dist_obj  = deterministic_eval(link_expr)
             trace[node] = dist_obj.sample()
         elif keyword == "observe*":
             trace[node] = obs[node]
+        import pdb; pdb.set_trace()
+        if DEBUG:
+            print('Trace: ', trace)
 
     expr = plugin_parent_values(expr, trace)
     return deterministic_eval(expr), sigma
@@ -165,45 +173,43 @@ def run_probabilistic_tests():
 if __name__ == '__main__':
     daphne_path = '/Users/tony/Documents/prog-prob/CS539-HW-2'
 
-    run_deterministic_tests()
+    # run_deterministic_tests()
+    #
+    # run_probabilistic_tests()
 
-    run_probabilistic_tests()
+    for i in range(1,5):
+        ## Note: this path should be with respect to the daphne path!
+        # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
+        # ast_path = f'./jsons/graphs/final/{i}.json'
+        # with open(ast_path, 'w') as fout:
+        #     json.dump(ast, fout, indent=2)
+        # print('\n\n\nSample of prior of program {}:'.format(i))
 
-    # for i in range(1,5):
-    #     ## Note: this path should be with respect to the daphne path!
-    #     # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
-    #     # ast_path = f'./jsons/graphs/final/{i}.json'
-    #     # with open(ast_path, 'w') as fout:
-    #     #     json.dump(ast, fout, indent=2)
-    #     # print('\n\n\nSample of prior of program {}:'.format(i))
-    #
-    #     if i == 1:
-    #         print('Running graph-based-sampling for Task number {}:'.format(str(i+1)))
-    #         ast_path = f'./jsons/graphs/final/{i}.json'
-    #         with open(ast_path) as json_file:
-    #             graph = json.load(json_file)
-    #         # print(graph)
-    #
-    #         print("Single Run Graph Evaluation: ")
-    #         output = sample_from_joint(graph)
-    #         print("Graph Evaluation Output: ", output)
-    #         print("\n")
-    #
-    #         print("Expectation: ")
-    #         stream = get_stream(graph)
-    #         samples = []
-    #         for k in range(1000):
-    #             samples.append(next(stream))
-    #         # print(samples)
-    #         all_samples = torch.tensor(samples)
-    #
-    #         # print("Evaluation Output: ", all_samples)
-    #         print("Mean of 1000 samples: ", torch.mean(all_samples))
-    #         print("\n")
-    #
-    #         # Empty globals funcs
-    #         rho = {}
-    #
+        if i == 1:
+            print('Running graph-based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/graph/final/{i}.json'
+            with open(ast_path) as json_file:
+                graph = json.load(json_file)
+            # print(graph)
+
+            print("Single Run Graph Evaluation: ")
+            output = sample_from_joint(graph)
+            print("Graph Evaluation Output: ", output)
+            print("\n")
+
+            print("Expectation: ")
+            stream = get_stream(graph)
+            samples = []
+            for k in range(1000):
+                samples.append(next(stream))
+            # print(samples)
+            all_samples = torch.tensor(samples)
+
+            # print("Evaluation Output: ", all_samples)
+            print("Mean of 1000 samples: ", torch.mean(all_samples))
+            print("\n")
+
+
     #     elif i == 2:
     #         print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
     #         ast_path = f'./jsons/graphs/final/{i}.json'
