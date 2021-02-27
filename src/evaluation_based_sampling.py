@@ -350,7 +350,43 @@ def evaluate_program(ast, sig=None, l={}):
                     if DEBUG:
                         print('Data : ', get_data_struct)
                     return [op_func(get_data_struct), sig]
-            # Conditionals
+            # Assign
+            elif root == 'let':
+                # (let [params] body)
+                let_param_name = tail[0][0]
+                let_param_value = tail[0][1]
+                let_body = tail[1]
+                if DEBUG:
+                    print('Let param name: ', let_param_name)
+                    print('Let params value: ', let_param_value)
+                    print('Let body: ', let_body)
+                # Evaluate params
+                let_param_value_eval, _ = evaluate_program([let_param_value], sig, l=l)
+                # Add to local variables
+                l[let_param_name] = let_param_value_eval
+                # Check for single instance string
+                if isinstance(let_body, str):
+                    let_body = [let_body]
+                if DEBUG:
+                    print('Local Params :  ', l)
+                    print('Recursive Body: ', let_body, "\n")
+                # Evaluate body
+                return evaluate_program([let_body], sig, l=l)
+            # Conditonal
+            elif root == "if":
+                # (if e1 e2 e3)
+                if DEBUG:
+                    print('Conditonal Expr1 :  ', tail[0])
+                    print('Conditonal Expr2 :  ', tail[1])
+                    print('Conditonal Expr3 :  ', tail[2])
+                e1_, sig = evaluate_program([tail[0]], sig, l=l)
+                if DEBUG:
+                    print('Conditonal eval :  ', e1_)
+                if e1_:
+                    return evaluate_program([tail[1]], sig, l=l)
+                else:
+                    return evaluate_program([tail[2]], sig, l=l)
+            # Conditional Evaluation
             elif root in cond_ops.keys():
                 # (< a b)
                 op_func = cond_ops[root]
@@ -381,42 +417,6 @@ def evaluate_program(ast, sig=None, l={}):
                     print('Eval Conditional param-1: ', a)
                     print('Eval Conditional param-2: ', b)
                 return [op_func(a, b), sig]
-            # Assign
-            elif root == 'let':
-                # (let [params] body)
-                let_param_name = tail[0][0]
-                let_param_value = tail[0][1]
-                let_body = tail[1]
-                if DEBUG:
-                    print('Let param name: ', let_param_name)
-                    print('Let params value: ', let_param_value)
-                    print('Let body: ', let_body)
-                # Evaluate params
-                let_param_value_eval, _ = evaluate_program([let_param_value], sig, l=l)
-                # Add to local variables
-                l[let_param_name] = let_param_value_eval
-                # Check for single instance string
-                if isinstance(let_body, str):
-                    let_body = [let_body]
-                if DEBUG:
-                    print('Local Params :  ', l)
-                    print('Recursive Body: ', let_body, "\n")
-                # Evaluate body
-                return evaluate_program([let_body], sig, l=l)
-            # Assign
-            elif root == "if":
-                # (if e1 e2 e3)
-                if DEBUG:
-                    print('Conditonal Expr1 :  ', tail[0])
-                    print('Conditonal Expr2 :  ', tail[1])
-                    print('Conditonal Expr3 :  ', tail[2])
-                e1_, sig = evaluate_program([tail[0]], sig, l=l)
-                if DEBUG:
-                    print('Conditonal eval :  ', e1_)
-                if e1_:
-                    return evaluate_program([tail[1]], sig, l=l)
-                else:
-                    return evaluate_program([tail[2]], sig, l=l)
             # Functions
             elif root == "defn":
                 # (defn name[param] body, )

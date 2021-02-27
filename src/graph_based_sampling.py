@@ -1,3 +1,4 @@
+import json
 import torch
 import numpy as np
 import torch.distributions as dist
@@ -84,7 +85,7 @@ def get_stream(graph):
     Returns: a python iterator with an infinite stream of samples
     """
     while True:
-        yield sample_from_joint(graph)
+        yield sample_from_joint(graph)[0]
 
 
 #------------------------------Test Functions --------------------------------#
@@ -97,12 +98,12 @@ def run_deterministic_tests():
         # with open(ast_path, 'w') as fout:
         #     json.dump(ast, fout, indent=2)
 
-        ast_path = f'./jsons/graphs/deterministic/test_{i}.json'
+        ast_path = f'./jsons/graph/deterministic/test_{i}.json'
         with open(ast_path) as json_file:
             graph = json.load(json_file)
         # print(graph)
 
-        ret = sample_from_joint(graph)
+        ret = sample_from_joint(graph)[0]
 
         print('Running graph-based-sampling for deterministic test number {}:'.format(str(i)))
         truth = load_truth('./programs/tests/deterministic/test_{}.truth'.format(i))
@@ -131,7 +132,7 @@ def run_probabilistic_tests():
         # with open(ast_path, 'w') as fout:
         #     json.dump(ast, fout, indent=2)
 
-        ast_path = f'./jsons/graphs/probabilistic/test_{i}.json'
+        ast_path = f'./jsons/graph/probabilistic/test_{i}.json'
         with open(ast_path) as json_file:
             graph = json.load(json_file)
         # print(graph)
@@ -147,13 +148,11 @@ def run_probabilistic_tests():
         print('Running graph-based-sampling for probabilistic test number {}:'.format(str(i)))
         truth = load_truth('./programs/tests/probabilistic/test_{}.truth'.format(i))
         # print(truth)
-        p_val = run_prob_test(stream, truth, num_samples)
-
-        print('p value', p_val)
-
         try:
+            p_val = run_prob_test(stream, truth, num_samples)
+            print('p value', p_val)
             assert(p_val > max_p_value)
-        except AssertionError:
+        except:
             print('Test Failed\n')
             continue
 
@@ -166,138 +165,138 @@ def run_probabilistic_tests():
 if __name__ == '__main__':
     daphne_path = '/Users/tony/Documents/prog-prob/CS539-HW-2'
 
-    # run_deterministic_tests()
+    run_deterministic_tests()
 
-    # run_probabilistic_tests()
+    run_probabilistic_tests()
 
-    for i in range(1,5):
-        ## Note: this path should be with respect to the daphne path!
-        # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
-        # ast_path = f'./jsons/graphs/final/{i}.json'
-        # with open(ast_path, 'w') as fout:
-        #     json.dump(ast, fout, indent=2)
-        # print('\n\n\nSample of prior of program {}:'.format(i))
-
-        if i == 1:
-            print('Running graph-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/graphs/final/{i}.json'
-            with open(ast_path) as json_file:
-                graph = json.load(json_file)
-            # print(graph)
-
-            print("Single Run Graph Evaluation: ")
-            output = sample_from_joint(graph)
-            print("Graph Evaluation Output: ", output)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(graph)
-            samples = []
-            for k in range(1000):
-                samples.append(next(stream))
-            # print(samples)
-            all_samples = torch.tensor(samples)
-
-            # print("Evaluation Output: ", all_samples)
-            print("Mean of 1000 samples: ", torch.mean(all_samples))
-            print("\n")
-
-            # Empty globals funcs
-            rho = {}
-
-        elif i == 2:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/graphs/final/{i}.json'
-            with open(ast_path) as json_file:
-                graph = json.load(json_file)
-            # print(graph)
-
-            print("Single Run Graph Evaluation: ")
-            output = sample_from_joint(graph)
-            print("Graph Evaluation Output: \n", output)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(graph)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    # print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    samples = torch.cat((samples, sample), dim=-1)
-
-            # print(samples)
-            print("Evaluation Output: ", samples.shape)
-            print("")
-            print("Mean of 1000 samples for slope and bias: \n", torch.mean(samples, dim=1))
-            print("\n")
-
-            # Empty globals funcs
-            rho = {}
-
-        elif i == 3:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/graphs/final/{i}.json'
-            with open(ast_path) as json_file:
-                graph = json.load(json_file)
-            # print(graph)
-
-            print("Single Run Graph Evaluation: ")
-            output = sample_from_joint(graph)
-            output = torch.transpose(output, 0, 1)
-            print("Graph Evaluation Output: \n", output)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(graph)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    samples = torch.transpose(samples, 0, 1)
-                    print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    sample  = torch.transpose(sample, 0, 1)
-                    samples = torch.cat((samples, sample), dim=0)
-
-            # print(samples)
-            print("Evaluation Output: ", samples.shape)
-            print("")
-            print("Mean of 1000 samples for each HMM step: \n", torch.mean(samples, dim=0))
-            print("\n")
-
-        elif i == 4:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/graphs/final/{i}.json'
-            with open(ast_path) as json_file:
-                graph = json.load(json_file)
-            # print(graph)
-
-            print("Single Run Graph Evaluation: ")
-            output = sample_from_joint(graph)
-            output = torch.transpose(output, 0, 1)
-            print("Graph Evaluation Output: \n", output)
-            print("\n")
-
-            print("Expectation: ")
-            stream = get_stream(graph)
-            samples = []
-            for k in range(1000):
-                if k == 0:
-                    samples = next(stream)
-                    samples = torch.transpose(samples, 0, 1)
-                    # print(samples.shape)
-                else:
-                    sample  = next(stream)
-                    sample  = torch.transpose(sample, 0, 1)
-                    samples = torch.cat((samples, sample), dim=0)
-
-            # print(samples)
-            print("Evaluation Output: ", samples.shape)
-            print("")
-            print("Mean of 1000 samples for each Neural Network weight(s): \n", torch.mean(samples, dim=0))
-            print("\n")
+    # for i in range(1,5):
+    #     ## Note: this path should be with respect to the daphne path!
+    #     # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
+    #     # ast_path = f'./jsons/graphs/final/{i}.json'
+    #     # with open(ast_path, 'w') as fout:
+    #     #     json.dump(ast, fout, indent=2)
+    #     # print('\n\n\nSample of prior of program {}:'.format(i))
+    #
+    #     if i == 1:
+    #         print('Running graph-based-sampling for Task number {}:'.format(str(i+1)))
+    #         ast_path = f'./jsons/graphs/final/{i}.json'
+    #         with open(ast_path) as json_file:
+    #             graph = json.load(json_file)
+    #         # print(graph)
+    #
+    #         print("Single Run Graph Evaluation: ")
+    #         output = sample_from_joint(graph)
+    #         print("Graph Evaluation Output: ", output)
+    #         print("\n")
+    #
+    #         print("Expectation: ")
+    #         stream = get_stream(graph)
+    #         samples = []
+    #         for k in range(1000):
+    #             samples.append(next(stream))
+    #         # print(samples)
+    #         all_samples = torch.tensor(samples)
+    #
+    #         # print("Evaluation Output: ", all_samples)
+    #         print("Mean of 1000 samples: ", torch.mean(all_samples))
+    #         print("\n")
+    #
+    #         # Empty globals funcs
+    #         rho = {}
+    #
+    #     elif i == 2:
+    #         print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+    #         ast_path = f'./jsons/graphs/final/{i}.json'
+    #         with open(ast_path) as json_file:
+    #             graph = json.load(json_file)
+    #         # print(graph)
+    #
+    #         print("Single Run Graph Evaluation: ")
+    #         output = sample_from_joint(graph)
+    #         print("Graph Evaluation Output: \n", output)
+    #         print("\n")
+    #
+    #         print("Expectation: ")
+    #         stream = get_stream(graph)
+    #         samples = []
+    #         for k in range(1000):
+    #             if k == 0:
+    #                 samples = next(stream)
+    #                 # print(samples.shape)
+    #             else:
+    #                 sample  = next(stream)
+    #                 samples = torch.cat((samples, sample), dim=-1)
+    #
+    #         # print(samples)
+    #         print("Evaluation Output: ", samples.shape)
+    #         print("")
+    #         print("Mean of 1000 samples for slope and bias: \n", torch.mean(samples, dim=1))
+    #         print("\n")
+    #
+    #         # Empty globals funcs
+    #         rho = {}
+    #
+    #     elif i == 3:
+    #         print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+    #         ast_path = f'./jsons/graphs/final/{i}.json'
+    #         with open(ast_path) as json_file:
+    #             graph = json.load(json_file)
+    #         # print(graph)
+    #
+    #         print("Single Run Graph Evaluation: ")
+    #         output = sample_from_joint(graph)
+    #         output = torch.transpose(output, 0, 1)
+    #         print("Graph Evaluation Output: \n", output)
+    #         print("\n")
+    #
+    #         print("Expectation: ")
+    #         stream = get_stream(graph)
+    #         samples = []
+    #         for k in range(1000):
+    #             if k == 0:
+    #                 samples = next(stream)
+    #                 samples = torch.transpose(samples, 0, 1)
+    #                 print(samples.shape)
+    #             else:
+    #                 sample  = next(stream)
+    #                 sample  = torch.transpose(sample, 0, 1)
+    #                 samples = torch.cat((samples, sample), dim=0)
+    #
+    #         # print(samples)
+    #         print("Evaluation Output: ", samples.shape)
+    #         print("")
+    #         print("Mean of 1000 samples for each HMM step: \n", torch.mean(samples, dim=0))
+    #         print("\n")
+    #
+    #     elif i == 4:
+    #         print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+    #         ast_path = f'./jsons/graphs/final/{i}.json'
+    #         with open(ast_path) as json_file:
+    #             graph = json.load(json_file)
+    #         # print(graph)
+    #
+    #         print("Single Run Graph Evaluation: ")
+    #         output = sample_from_joint(graph)
+    #         output = torch.transpose(output, 0, 1)
+    #         print("Graph Evaluation Output: \n", output)
+    #         print("\n")
+    #
+    #         print("Expectation: ")
+    #         stream = get_stream(graph)
+    #         samples = []
+    #         for k in range(1000):
+    #             if k == 0:
+    #                 samples = next(stream)
+    #                 samples = torch.transpose(samples, 0, 1)
+    #                 # print(samples.shape)
+    #             else:
+    #                 sample  = next(stream)
+    #                 sample  = torch.transpose(sample, 0, 1)
+    #                 samples = torch.cat((samples, sample), dim=0)
+    #
+    #         # print(samples)
+    #         print("Evaluation Output: ", samples.shape)
+    #         print("")
+    #         print("Mean of 1000 samples for each Neural Network weight(s): \n", torch.mean(samples, dim=0))
+    #         print("\n")
 #-------------------------------------------------------------------------------
