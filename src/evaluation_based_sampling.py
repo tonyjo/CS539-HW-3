@@ -39,14 +39,19 @@ dist_ops = {"normal":lambda mu, sig: distributions.normal.Normal(loc=mu, scale=s
             "beta":lambda a, b: distributions.beta.Beta(concentration1=a, concentration0=b),
             "exponential":lambda rate: distributions.exponential.Exponential(rate=rate),
             "uniform": lambda low, high: distributions.uniform.Uniform(low=low, high=high),
-            "discrete": lambda probs: distributions.categorical.Categorical(probs=probs)
+            "discrete": lambda probs: distributions.categorical.Categorical(probs=probs),
+            "dirichlet": lambda concentration: distributions.dirichlet.Dirichlet(concentration=concentration),
+            "bernoulli": lambda probs: distributions.bernoulli.Bernoulli(probs=probs),
+            "flip": lambda probs: distributions.bernoulli.Bernoulli(probs=probs)
 }
 
-cond_ops={"<":  lambda a, b: a < b,
-          ">":  lambda a, b: a > b,
+cond_ops={"<": lambda a, b: a < b,
+          ">": lambda a, b: a > b,
+          "=": lambda a, b: a == b,
           ">=": lambda a, b: a >= b,
           "<=": lambda a, b: a <= b,
-          "|":  lambda a, b: a or b
+          "or": lambda a, b: a or b,
+          "and": lambda a, b: a and b
 }
 
 nn_ops={"mat-tanh": lambda a: torch.tanh(a),
@@ -568,13 +573,13 @@ def evaluate_program(ast, sig={}, l={}):
         for func in range(len(ast)-1):
             if DEBUG:
                 print('Function: ', ast[func])
-            fname, _ = evaluate_program([ast[func]], sig=None, l={})
+            fname, _ = evaluate_program([ast[func]], sig=sig, l=l)
             if DEBUG:
                 print('Parsed function: ', fname)
                 print("\n")
         # Evaluate Expression
         try:
-            outputs_, sig = evaluate_program([ast[-1]], sig=None, l={})
+            outputs_, sig = evaluate_program([ast[-1]], sig=sig, l=l)
         except:
             raise AssertionError('Failed to evaluate expression!')
         if DEBUG:
@@ -844,7 +849,7 @@ if __name__ == '__main__':
     # run_hw2_tests()
 
     # for i in range(1,5):
-    for i in range(1,2):
+    for i in range(4,5):
         # Note: this path should be with respect to the daphne path!
         # ast = daphne(['desugar', '-i', f'{program_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/HW3/eval/{i}.json'
@@ -865,23 +870,23 @@ if __name__ == '__main__':
             # print("Evaluation Sigma: ", sig)
             # print("\n")
 
-            # print("--------------------------------")
-            # print("Importance sampling Evaluation: ")
-            # num_samples = 1000
-            # all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
-            #
-            # W_k = 0.0
-            # for k in range(num_samples):
-            #     r_l, W_l = all_output[k]
-            #     W_k += W_l
-            #
-            # expected_output = 0.0
-            # for l in range(num_samples):
-            #     r_l, W_l = all_output[l]
-            #     expected_output += ((W_l/W_k) * r_l)
-            # print("Output: ", expected_output)
-            # print("--------------------------------")
-            # print("\n")
+            print("--------------------------------")
+            print("Importance sampling Evaluation: ")
+            num_samples = 1000
+            all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
+
+            W_k = 0.0
+            for k in range(num_samples):
+                r_l, W_l = all_output[k]
+                W_k += W_l
+
+            expected_output = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                expected_output += ((W_l/W_k) * r_l)
+            print("Output: ", expected_output)
+            print("--------------------------------")
+            print("\n")
 
             print("--------------------------------")
             print("MH sampling Evaluation: ")
@@ -896,127 +901,87 @@ if __name__ == '__main__':
             print("--------------------------------")
             print("\n")
 
-            # all_samples = torch.tensor(samples)
+            # Empty globals funcs
+            rho = {}
 
-            # # print("Evaluation Output: ", all_samples)
-            # print("Mean of 1000 samples: ", torch.mean(all_samples))
+        elif i == 2:
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/HW3/eval/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            # print(len(ast))
+
+            # print("Single Run Evaluation: ")
+            # ret, sig = evaluate_program(ast)
+            # print("Evaluation Output: ", ret)
             # print("\n")
-            #
-            # # Empty globals funcs
-            # rho = {}
 
-        # elif i == 2:
-        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-        #     ast_path = f'./jsons/tests/final/{i}.json'
-        #     with open(ast_path) as json_file:
-        #         ast = json.load(json_file)
-        #     # print(ast)
-        #     # print(len(ast))
-        #
-        #     print("Single Run Evaluation: ")
-        #     ret, sig = evaluate_program(ast)
-        #     print("Evaluation Output: ", ret)
-        #     print("\n")
-        #
-        #     print("Expectation: ")
-        #     stream = get_stream(ast)
-        #     samples = []
-        #     for k in range(1000):
-        #         if k == 0:
-        #             samples = next(stream)
-        #             samples = samples.unsqueeze(0)
-        #             print(samples.shape)
-        #         else:
-        #             sample  = next(stream)
-        #             sample  = sample.unsqueeze(0)
-        #             samples = torch.cat((samples, sample), dim=0)
-        #     print("Evaluation Output: ", samples.shape)
-        #     print("Mean of 1000 samples: ", torch.mean(samples, dim=0))
-        #     print("\n")
-        #
-        #     # print(samples)
-        #     fig, (ax1, ax2) = plt.subplots(2, 1)
-        #     ax1.hist([a[0] for a in samples])
-        #     ax2.hist([a[1] for a in samples])
-        #     plt.savefig(f'plots/2.png')
-        #
-        #     # Empty globals funcs
-        #     rho = {}
-        #
-        # elif i == 3:
-        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-        #     ast_path = f'./jsons/tests/final/{i}.json'
-        #     with open(ast_path) as json_file:
-        #         ast = json.load(json_file)
-        #     # print(ast)
-        #     # print("Single Run Evaluation: ")
-        #     # ret, sig = evaluate_program(ast)
-        #     # print("Evaluation Output: ", ret)
-        #     # print("\n")
-        #
-        #     print("Expectation: ")
-        #     stream  = get_stream(ast)
-        #     samples = []
-        #     for k in range(1000):
-        #         if k == 0:
-        #             samples = next(stream)
-        #             samples = samples.unsqueeze(0)
-        #             # print(samples.shape)
-        #         else:
-        #             sample  = next(stream)
-        #             sample  = sample.unsqueeze(0)
-        #             samples = torch.cat((samples, sample), dim=0)
-        #     # print(samples)
-        #     print("Evaluation Output: ", samples.shape)
-        #     print("Mean of 1000 samples for each HMM step: \n", torch.mean(samples, dim=0))
-        #     print("\n")
-        #
-        #     fig, axs = plt.subplots(3,6)
-        #     png = [axs[i//6,i%6].hist([a[i] for a in samples]) for i in range(17)]
-        #     plt.tight_layout()
-        #     plt.savefig(f'plots/p3.png')
-        #
-        #     # Empty globals funcs
-        #     rho = {}
-        #
-        # elif i == 4:
-        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-        #     ast_path = f'./jsons/tests/final/{i}.json'
-        #     with open(ast_path) as json_file:
-        #         ast = json.load(json_file)
-        #     # print(ast)
-        #
-        #     # print("Single Run Evaluation: ")
-        #     # ret, sig = evaluate_program(ast)
-        #     # print("Evaluation Output: ", ret.shape)
-        #     # print("\n")
-        #
-        #     print("Expectation: ")
-        #     stream  = get_stream(ast)
-        #     samples = []
-        #     for k in range(1000):
-        #         if k == 0:
-        #             samples = next(stream)
-        #             samples = samples.unsqueeze(0)
-        #             # print(samples.shape)
-        #         else:
-        #             sample  = next(stream)
-        #             sample  = sample.unsqueeze(0)
-        #             samples = torch.cat((samples, sample), dim=0)
-        #     # print(samples)
-        #     print("Evaluation Output: ", samples.shape)
-        #     W_0 = samples[:, 0:10]
-        #     b_0 = samples[:, 10:20]
-        #     W_1 = samples[:, 20:120]
-        #     b_1 = samples[:, 120:]
-        #
-        #     print("W_0: ", W_0.shape)
-        #     print("b_0: ", b_0.shape)
-        #     print("W_1: ", W_1.shape)
-        #     print("b_1: ", b_1.shape)
-        #     print("Mean of 1000 samples for each Neural Network weight(s): \n", torch.mean(samples, dim=0))
-        #     print("\n")
-        #
-        #     # Empty globals funcs
-        #     rho = {}
+            print("--------------------------------")
+            print("Importance sampling Evaluation: ")
+            num_samples = 1000
+            all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
+            W_k = 0.0
+            for k in range(num_samples):
+                r_l, W_l = all_output[k]
+                W_k += W_l
+
+            expected_bias = 0.0
+            expected_slope = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                expected_bias += ((W_l/W_k) * r_l[1])
+                expected_slope += ((W_l/W_k) * r_l[0])
+            print("Bias Output: ", expected_bias)
+            print("Slope Output: ", expected_slope)
+            print("--------------------------------")
+            print("\n")
+
+            print("--------------------------------")
+            print("MH sampling Evaluation: ")
+            num_samples = 1000
+            all_output  = independent_MH(ast=ast, S=num_samples)
+            expected_bias = 0.0
+            expected_slope = 0.0
+            for l in range(num_samples):
+                r_l = all_output[l]
+                expected_bias += r_l[0][1]
+                expected_slope += r_l[0][0]
+            expected_bias = expected_bias/num_samples
+            expected_slope = expected_slope/num_samples
+            print("Bias Output: ", expected_bias)
+            print("Slope Output: ", expected_slope)
+            print("--------------------------------")
+            print("\n")
+
+            # Empty globals funcs
+            rho = {}
+
+        elif i == 3:
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/HW3/eval/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            print("Single Run Evaluation: ")
+            ret, sig = evaluate_program(ast)
+            print("Evaluation Output: ", ret, sig)
+            print("\n")
+
+            # Empty globals funcs
+            rho = {}
+
+        elif i == 4:
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/HW3/eval/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            print("Single Run Evaluation: ")
+            ret, sig = evaluate_program(ast)
+            print("Evaluation Output: ", ret, sig)
+            print("\n")
+
+            # Empty globals funcs
+            rho = {}
 #-------------------------------------------------------------------------------
