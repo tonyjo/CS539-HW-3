@@ -48,7 +48,7 @@ def plugin_parent_values(expr, trace):
     else:
         return expr
 
-def sample_from_joint(graph):
+def sample_from_joint(graph, sigma={}):
     """
     This function does ancestral sampling starting from the prior.
     1. Run topological sort on V using V and A, resulting in an array of v's
@@ -62,11 +62,11 @@ def sample_from_joint(graph):
     nodes, edges, links, obs = model['V'], model['A'], model['P'], model['Y']
     sorted_nodes = topological_sort(nodes, edges)
 
-    sigma = {}
     trace = {}
     for node in sorted_nodes:
         keyword = links[node][0]
         if keyword == "sample*":
+            # import pdb; pdb.set_trace()
             link_expr = links[node][1]
             if DEBUG:
                 print('Link Expression without parent vals: ', link_expr)
@@ -76,12 +76,25 @@ def sample_from_joint(graph):
             dist_obj  = deterministic_eval(link_expr)
             trace[node] = dist_obj.sample()
         elif keyword == "observe*":
-            trace[node] = obs[node]
-        # import pdb; pdb.set_trace()
-        if DEBUG:
-            print('Trace: ', trace)
+            # import pdb; pdb.set_trace()
+            value = obs[node]
+            link_expr = links[node][1]
+            link_expr = plugin_parent_values(link_expr, trace)
+            if DEBUG:
+                print('Link Expression: ', link_expr)
+            dist_obj = deterministic_eval(link_expr)
+            if DEBUG:
+                print('Distribution Object: ', dist_obj)
+            # Obtain likelihood
+            if "logW" in sigma.keys():
+                sigma["logW"] += dist_obj.log_prob(value)
+            else:
+                sigma["logW"]  = dist_obj.log_prob(value)
+            # Trace
+            trace[node] = value
 
     expr = plugin_parent_values(expr, trace)
+
     return deterministic_eval(expr), sigma
 
 
@@ -95,15 +108,17 @@ def get_stream(graph):
     while True:
         yield sample_from_joint(graph)[0]
 
+
 def likelihood_weighting_IS(ast, L):
     samples = []
     for i in range(L):
         sig = {}
         sig["logW"] = 0.0
-        r_l, sig_l = evaluate_program(ast, sig=sig, l={})
+        r_l, sig_l = sample_from_joint(ast, sigma=sig)
         s_l = sig_l["logW"]
         samples.append([r_l, s_l])
     return samples
+
 
 def independent_MH(ast, S):
     sig = {}
@@ -115,7 +130,7 @@ def independent_MH(ast, S):
     for i in range(S):
         sig = {}
         sig["logW"] = 0.0
-        r_l, sig_l = evaluate_program(ast, sig=sig, l={})
+        r_l, sig_l  = sample_from_joint(ast, sigma=sig)
         s_l = sig_l["logW"]
         alpha = math.exp(s_l)/math.exp(logW)
         u = (uniform_dist.sample()).item()
@@ -124,6 +139,7 @@ def independent_MH(ast, S):
             logW = s_l
         all_r.append([r])
     return all_r
+
 
 #------------------------------Test Functions --------------------------------#
 def run_deterministic_tests():
@@ -197,8 +213,9 @@ def run_probabilistic_tests():
 
     print('All probabilistic tests passed.')
 
+
 def run_hw2_tests():
-    for i in range(3,4):
+    for i in range(1,4):
         if i == 1:
             print('Running graph-based-sampling for Task number {}:'.format(str(i+1)))
             ast_path = f'./jsons/graph/final/{i}.json'
@@ -287,10 +304,9 @@ def run_hw2_tests():
             print("\n")
 #-------------------------------------------------------------------------------
 
-
 #-------------------------------MAIN--------------------------------------------
 if __name__ == '__main__':
-    daphne_path = '/Users/tony/Documents/prog-prob/CS539-HW-2'
+    program_path = '/Users/tony/Documents/prog-prob/CS539-HW-3'
 
     # # Uncomment the appropriate tests to run
     # # Deterministic Test
@@ -300,4 +316,40 @@ if __name__ == '__main__':
     # run_probabilistic_tests()
 
     # Run HW-2 Tests
-    run_hw2_tests()
+    # run_hw2_tests()
+
+    # for i in range(1,6):
+    for i in range(1,2):
+        # # Note: this path should be with respect to the daphne path!
+        # ast = daphne(['graph', '-i', f'{program_path}/src/programs/{i}.daphne'])
+        # ast_path = f'./jsons/HW3/graph/{i}.json'
+        # with open(ast_path, 'w') as fout:
+        #     json.dump(ast, fout, indent=2)
+        # print('\n\n\nSample of prior of program {}:'.format(i))
+
+        if i == 1:
+            print('Running Graph-Based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/HW3/graph/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            output = sample_from_joint(ast)
+            print(output)
+
+            print("--------------------------------")
+            print("Importance sampling Evaluation: ")
+            num_samples = 1000
+            all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
+
+            W_k = 0.0
+            for k in range(num_samples):
+                r_l, W_l = all_output[k]
+                W_k += W_l
+
+            expected_output = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                expected_output += ((W_l/W_k) * r_l)
+            print("Output: ", expected_output)
+            print("--------------------------------")
+            print("\n")
