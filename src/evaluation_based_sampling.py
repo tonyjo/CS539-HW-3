@@ -60,7 +60,7 @@ global rho;
 rho = {}
 DEBUG = False # Set to true to see intermediate outputs for debugging purposes
 #----------------------------Evaluation Functions -----------------------------#
-def evaluate_program(ast, sig=None, l={}):
+def evaluate_program(ast, sig={}, l={}):
     """
     Evaluate a program as desugared by daphne, generate a sample from the prior
     Args:
@@ -102,7 +102,7 @@ def evaluate_program(ast, sig=None, l={}):
             # Basic primitives
             if root in basic_ops.keys():
                 op_func = basic_ops[root]
-                eval_1  = evaluate_program([tail[0]], sig, l=l)[0]
+                eval_1, sig = evaluate_program([tail[0]], sig=sig, l=l)
                  # Make sure in floating point
                 if torch.is_tensor(eval_1):
                     eval_1 = eval_1.type(torch.float32)
@@ -111,7 +111,9 @@ def evaluate_program(ast, sig=None, l={}):
                 if DEBUG:
                     print('Basic OP eval-1: ', eval_1)
                     print('Basic OP Tail: ', tail[1:])
-                return [op_func(eval_1, evaluate_program(tail[1:], sig, l=l)[0]), sig]
+                # Evalute
+                op_eval, sig = op_func(eval_1, evaluate_program(tail[1:], sig=sig, l=l)[0])
+                return [op_eval, sig]
             # Math ops
             elif root in math_ops.keys():
                 op_func = math_ops[root]
@@ -124,17 +126,17 @@ def evaluate_program(ast, sig=None, l={}):
                     e1, e2 = tail
                     # Operand-1
                     if isinstance(e1, list) and len(e1) == 1:
-                        a, _ = evaluate_program(e1, sig, l=l)
+                        a, sig = evaluate_program(e1, sig=sig, l=l)
                     elif isinstance(e1, list):
-                        a, _ = evaluate_program([e1], sig, l=l)
+                        a, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
                         # Most likely a pre-defined varibale in l
                         a = l[e1]
                     # Operand-2
                     if isinstance(e2, list) and len(e2) == 1:
-                        b, _ = evaluate_program(e2, sig, l=l)
+                        b, sig = evaluate_program(e2, sig=sig, l=l)
                     elif isinstance(e2, list):
-                        b, _ = evaluate_program([e2], sig, l=l)
+                        b, sig = evaluate_program([e2], sig=sig, l=l)
                     else:
                         b = l[e2] # Most likely a pre-defined varibale in l
                     if DEBUG:
@@ -147,25 +149,25 @@ def evaluate_program(ast, sig=None, l={}):
                     e1, e2, e3 = tail
                     # Initial MAT
                     if isinstance(e1, list) and len(e1) == 1:
-                        a, _ = evaluate_program(e1, sig, l=l)
+                        a, sig = evaluate_program(e1, sig=sig, l=l)
                     elif isinstance(e1, list):
-                        a, _ = evaluate_program([e1], sig, l=l)
+                        a, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
                         a = l[e1] # Most likely a pre-defined varibale in l
                     # Repeat axis 1
                     if isinstance(e2, list) and len(e2) == 1:
-                        b, _ = evaluate_program(e2, sig, l=l)
+                        b, sig = evaluate_program(e2, sig=sig, l=l)
                     elif isinstance(e2, list):
-                        b, _ = evaluate_program([e2], sig, l=l)
+                        b, sig = evaluate_program([e2], sig=sig, l=l)
                     elif isinstance(e2, float) or isinstance(e2, int):
                         b = int(e2)
                     else:
                         b = l[e2] # Most likely a pre-defined varibale in l
                     # Repeat axis 2
                     if isinstance(e3, list) and len(e3) == 1:
-                        c, _ = evaluate_program(e3, sig, l=l)
+                        c, sig = evaluate_program(e3, sig=sig, l=l)
                     elif isinstance(e3, list):
-                        c, _ = evaluate_program([e3], sig, l=l)
+                        c, sig = evaluate_program([e3], sig=sig, l=l)
                     elif isinstance(e3, float) or isinstance(e3, int):
                         c = int(e3)
                     else:
@@ -175,9 +177,9 @@ def evaluate_program(ast, sig=None, l={}):
                 else:
                     e1 = tail
                     if isinstance(e1, list) and len(e1) == 1:
-                        a, _ = evaluate_program(e1, sig, l=l)
+                        a, sig = evaluate_program(e1, sig=sig, l=l)
                     elif isinstance(e1, list):
-                        a, _ = evaluate_program([e1], sig, l=l)
+                        a, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
                         a = l[e1] # Most likely a pre-defined varibale in l
                     if DEBUG:
@@ -241,13 +243,13 @@ def evaluate_program(ast, sig=None, l={}):
                 if root == 'put':
                     e1, e2, e3 = tail
                     if isinstance(e1, list):
-                        get_data_struct, _ = evaluate_program([e1], sig, l=l)
+                        get_data_struct, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
                         # Most likely a pre-defined varibale in l
                         get_data_struct = l[e1]
                     # Get index
                     if isinstance(e2, list):
-                        e2_idx, _ = evaluate_program([e2], sig, l=l)
+                        e2_idx, sig = evaluate_program([e2], sig=sig, l=l)
                     elif isinstance(e2, float) or isinstance(e2, int):
                         e2_idx = int(e2)
                     else:
@@ -255,7 +257,7 @@ def evaluate_program(ast, sig=None, l={}):
                         e2_idx = l[e2]
                     # Get Value
                     if isinstance(e3, list):
-                        e3_val, _ = evaluate_program([e3], sig, l=l)
+                        e3_val, sig = evaluate_program([e3], sig=sig, l=l)
                     elif isinstance(e3, float) or isinstance(e3, int):
                         e3_val = e3
                     else:
@@ -271,12 +273,12 @@ def evaluate_program(ast, sig=None, l={}):
                     # import pdb; pdb.set_trace()
                     e1, e2 = tail
                     if isinstance(e1, list):
-                        get_data_struct, _ = evaluate_program([e1], sig, l=l)
+                        get_data_struct, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
                         # Most likely a pre-defined varibale in l
                         get_data_struct = l[e1]
                     if isinstance(e2, list):
-                        e2_idx, _ = evaluate_program([e2], sig, l=l)
+                        e2_idx, sig = evaluate_program([e2], sig=sig, l=l)
                     elif isinstance(e2, float) or isinstance(e2, int):
                         e2_idx = e2
                     else:
@@ -297,7 +299,7 @@ def evaluate_program(ast, sig=None, l={}):
                     get_list1, get_list2 = tail
                     # Evalute exp1
                     if isinstance(get_list1, list):
-                        get_data_eval_1, _ = evaluate_program([get_list1], sig, l=l)
+                        get_data_eval_1, sig = evaluate_program([get_list1], sig=sig, l=l)
                     elif isinstance(get_list1, float) or isinstance(get_list1, int):
                         get_data_eval_1 = get_list1
                     else:
@@ -306,7 +308,7 @@ def evaluate_program(ast, sig=None, l={}):
                         print('Op Eval-1: ', get_data_eval_1)
                     # Evalute exp2
                     if isinstance(get_list2, list):
-                        get_data_eval_2, _ = evaluate_program([get_list2], sig, l=l)
+                        get_data_eval_2, sig = evaluate_program([get_list2], sig=sig, l=l)
                     elif isinstance(get_list2, float) or isinstance(get_list2, int):
                         get_data_eval_2 = get_list2
                     else:
@@ -343,7 +345,7 @@ def evaluate_program(ast, sig=None, l={}):
                     # ['First'/'last'/'rest', ['vector', 2, 3, 4, 5]]
                     e1 = tail
                     if isinstance(e1, list):
-                        get_data_struct, _ = evaluate_program(e1, sig, l=l)
+                        get_data_struct, sig = evaluate_program(e1, sig=sig, l=l)
                     else:
                         # Most likely a pre-defined varibale in l
                         get_data_struct = l[e1]
@@ -361,7 +363,7 @@ def evaluate_program(ast, sig=None, l={}):
                     print('Let params value: ', let_param_value)
                     print('Let body: ', let_body)
                 # Evaluate params
-                let_param_value_eval, _ = evaluate_program([let_param_value], sig, l=l)
+                let_param_value_eval, sig = evaluate_program([let_param_value], sig=sig, l=l)
                 # Add to local variables
                 l[let_param_name] = let_param_value_eval
                 # Check for single instance string
@@ -371,7 +373,7 @@ def evaluate_program(ast, sig=None, l={}):
                     print('Local Params :  ', l)
                     print('Recursive Body: ', let_body, "\n")
                 # Evaluate body
-                return evaluate_program([let_body], sig, l=l)
+                return evaluate_program([let_body], sig=sig, l=l)
             # Conditonal
             elif root == "if":
                 # (if e1 e2 e3)
@@ -434,14 +436,14 @@ def evaluate_program(ast, sig=None, l={}):
                     print('Function Body : ', fnbody)
                 # Check if already present
                 if fnname in rho.keys():
-                    return [fnname, None]
+                    return [fnname, sig]
                 else:
                     # Define functions
                     rho[fnname] = [fnparams, fnbody]
                     if DEBUG:
                         print('Local Params : ', l)
                         print('Global Funcs : ', rho, "\n")
-                    return [fnname, None]
+                    return [fnname, sig]
             # Get distribution
             elif root in dist_ops.keys():
                 op_func = dist_ops[root]
@@ -459,8 +461,8 @@ def evaluate_program(ast, sig=None, l={}):
                         print('Sampler Parameter-1: ', param1)
                         print('Sampler Parameter-2: ', param2)
                     # Eval params
-                    para1 = evaluate_program([param1], sig, l=l)[0]
-                    para2 = evaluate_program([param2], sig, l=l)[0]
+                    para1, sig = evaluate_program([param1], sig=sig, l=l)
+                    para2, sig = evaluate_program([param2], sig=sig, l=l)
                     # Make sure to have it in torch tensor
                     para1 = _totensor(x=para1)
                     para2 = _totensor(x=para2)
@@ -477,7 +479,7 @@ def evaluate_program(ast, sig=None, l={}):
                         param1 = tail[0]
                     if DEBUG:
                         print('Sampler Parameter-1: ', param1)
-                    para1 = evaluate_program([param1], sig, l=l)[0]
+                    para1, sig = evaluate_program([param1], sig=sig, l=l)
                     if DEBUG:
                         print('Eval Sampler Parameter-1: ', para1)
                     # Make sure to have it in torch tensor
@@ -489,7 +491,7 @@ def evaluate_program(ast, sig=None, l={}):
             elif root == 'sample':
                 if DEBUG:
                     print('Sampler program: ', tail)
-                sampler = evaluate_program(tail, sig, l=l)[0]
+                sampler, sig = evaluate_program(tail, sig=sig, l=l)
                 if DEBUG:
                     print('Sampler: ', sampler)
                 # IF sample object then take a sample
@@ -516,11 +518,12 @@ def evaluate_program(ast, sig=None, l={}):
                     print('Observe Param-1: ', ob_pm1)
                     print('Observe Param-2: ', ob_pm2)
                 # Evaluate observe params
-                dist, sig  = evaluate_program([ob_pm1], sig, l=l)
-                value, sig = evaluate_program([ob_pm2], sig, l=l)
+                distn, sig = evaluate_program([ob_pm1], sig=sig, l=l)
+                value, sig = evaluate_program([ob_pm2], sig=sig, l=l)
                 value = _totensor(x=value)
                 if DEBUG:
-                    print('Observed Value: ', value, "\n")
+                    print('Observe distribution: ', distn)
+                    print('Observe Value: ', value, "\n")
                 return [value, sig]
             # Most likely a single element list or function name
             else:
@@ -539,15 +542,15 @@ def evaluate_program(ast, sig=None, l={}):
                         raise AssertionError('Function params mis-match!')
                     else:
                         for k in range(len(tail)):
-                            fnparams_[fnparams[k]] = evaluate_program([tail[k]], sig, l=l)[0]
+                            fnparams_[fnparams[k]] = evaluate_program([tail[k]], sig=sig, l=l)[0]
                     if DEBUG:
                         print('Function Params :', fnparams_)
                         print('Function Body :', fnbody)
                     # Evalute function body
-                    eval_output = [evaluate_program([fnbody], sig, l=fnparams_)[0], sig]
+                    eval_output, sig = evaluate_program([fnbody], sig=sig, l=fnparams_)
                     if DEBUG:
                         print('Function evaluation output: ', eval_output)
-                    return eval_output
+                    return [eval_output, sig]
                 else:
                     return [root, sig]
         except:
@@ -674,33 +677,33 @@ if __name__ == '__main__':
         #     json.dump(ast, fout, indent=2)
         # print('\n\n\nSample of posterior of program {}:'.format(i))
 
-        # if i == 1:
-        #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
-        #     ast_path = f'./jsons/tests/final/{i}.json'
-        #     with open(ast_path) as json_file:
-        #         ast = json.load(json_file)
-        #     # print(ast)
-        #
-        #     print("Single Run Evaluation: ")
-        #     ret, sig = evaluate_program(ast)
-        #     print("Evaluation Output: ", ret)
-        #     print("\n")
-        #
-        #     print("Expectation: ")
-        #     stream = get_stream(ast)
-        #     samples = []
-        #     for k in range(1000):
-        #         samples.append(next(stream))
-        #
-        #     # print(samples)
-        #     all_samples = torch.tensor(samples)
-        #
-        #     # print("Evaluation Output: ", all_samples)
-        #     print("Mean of 1000 samples: ", torch.mean(all_samples))
-        #     print("\n")
-        #
-        #     # Empty globals funcs
-        #     rho = {}
+        if i == 1:
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            ast_path = f'./jsons/tests/final/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+
+            print("Single Run Evaluation: ")
+            ret, sig = evaluate_program(ast)
+            print("Evaluation Output: ", ret)
+            print("\n")
+
+            print("Expectation: ")
+            stream = get_stream(ast)
+            samples = []
+            for k in range(1000):
+                samples.append(next(stream))
+
+            # print(samples)
+            all_samples = torch.tensor(samples)
+
+            # print("Evaluation Output: ", all_samples)
+            print("Mean of 1000 samples: ", torch.mean(all_samples))
+            print("\n")
+
+            # Empty globals funcs
+            rho = {}
 
         # elif i == 2:
         #     print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
