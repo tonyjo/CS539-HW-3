@@ -381,8 +381,22 @@ def sample_from_joint(graph):
 
     return None
 
-def GibbsStep(X_, V, X, O, A, P, Y):
-    pass
+def GibbsAccept():
+    # Change from log
+    alpha = math.exp(alpha)
+    return alpha
+
+def GibbsStep(X_, Q_x, V, X, O, A, P, Y):
+    uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
+    for x in X:
+        d = Q_x[x]
+        X_n = X_
+        X_n[x] = d.sample()
+        alpha = GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y)
+        u = (uniform_dist.sample()).item()
+        if u < alpha:
+            X_ = X_n
+    return X_
 
 def Gibbs(graph, S):
     D, G, E = graph[0], graph[1], graph[2]
