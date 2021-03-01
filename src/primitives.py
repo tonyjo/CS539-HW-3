@@ -2,7 +2,10 @@ from copy import deepcopy
 import torch
 from collections.abc import Iterable
 
-
+def _or(a,b):
+    return a or b
+def _and(a,b):
+    return a and b
 def add(a,b):
     return torch.add(a,b)
 def subtract(a,b):
@@ -72,6 +75,8 @@ def put(struct, index, value):
     result = deepcopy(struct)
     result[index] = value
     return result
+def flip(p, obs=None):
+    return torch.distributions.Bernoulli(p)
 def bernoulli(p, obs=None):
     return torch.distributions.Bernoulli(p)
 def beta(alpha, beta, obs=None):
@@ -101,6 +106,8 @@ PRIMITIVES = {
     ">": gt,
     "<": lt,
     "==": eq,
+    "or": _or,
+    "and": _and,
     "sqrt": sqrt,
     "first": first,
     "second": second,
@@ -116,6 +123,7 @@ PRIMITIVES = {
     "get": get,
     "put": put,
     "bernoulli": bernoulli,
+    "flip":flip,
     "beta": beta,
     "normal": normal,
     "uniform": uniform,

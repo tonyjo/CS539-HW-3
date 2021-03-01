@@ -37,8 +37,9 @@ data_interact_ops = {'first': lambda x: x[0],      # retrieves the first element
 
 dist_ops = {"normal":lambda mu, sig: distributions.normal.Normal(loc=mu, scale=sig),
             "beta":lambda a, b: distributions.beta.Beta(concentration1=a, concentration0=b),
-            "exponential":lambda rate: distributions.exponential.Exponential(rate=rate),
+            "gamma": lambda concentration, rate: distributions.gamma.Gamma(concentration=concentration, rate=rate),
             "uniform": lambda low, high: distributions.uniform.Uniform(low=low, high=high),
+            "exponential":lambda rate: distributions.exponential.Exponential(rate=rate),
             "discrete": lambda probs: distributions.categorical.Categorical(probs=probs),
             "dirichlet": lambda concentration: distributions.dirichlet.Dirichlet(concentration=concentration),
             "bernoulli": lambda probs: distributions.bernoulli.Bernoulli(probs=probs),
