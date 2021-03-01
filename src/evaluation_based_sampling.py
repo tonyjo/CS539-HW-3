@@ -115,11 +115,17 @@ def evaluate_program(ast, sig={}, l={}):
                     eval_1 = eval_1.type(torch.float32)
                 elif isinstance(eval_1, int):
                     eval_1 = float(eval_1)
+                # Evalute tail
+                eval_2 = evaluate_program(tail[1:], sig=sig, l=l)[0]
+                # Make sure not list, if evals returned as list
+                if isinstance(eval_1, list):
+                    eval_1 = eval_1[0]
+                if isinstance(eval_2, list):
+                    eval_2 = eval_1[0]
                 if DEBUG:
                     print('Basic OP eval-1: ', eval_1)
-                    print('Basic OP Tail: ', tail[1:])
-                # Evalute
-                op_eval = op_func(eval_1, evaluate_program(tail[1:], sig=sig, l=l)[0])
+                    print('Basic OP eval-2: ', eval_2)
+                op_eval = op_func(eval_1, eval_2)
                 return [op_eval, sig]
             # Math ops
             elif root in math_ops.keys():
@@ -279,6 +285,9 @@ def evaluate_program(ast, sig={}, l={}):
                 elif root == 'remove' or root == 'get':
                     # import pdb; pdb.set_trace()
                     e1, e2 = tail
+                    if DEBUG:
+                        print('e1: ', e1)
+                        print('e2: ', e2)
                     if isinstance(e1, list):
                         get_data_struct, sig = evaluate_program([e1], sig=sig, l=l)
                     else:
@@ -291,14 +300,16 @@ def evaluate_program(ast, sig={}, l={}):
                     else:
                         # Otherwise Most likely a pre-defined varibale in l
                         e2_idx = l[e2]
+                        if isinstance(e2_idx, list):
+                            e2_idx = e2_idx[0]
+                    if DEBUG:
+                        print('Data : ', get_data_struct)
+                        print('Index/Value: ', e2_idx)
                     # Convert index to type-int
                     if torch.is_tensor(e2_idx):
                         e2_idx = e2_idx.long()
                     else:
                         e2_idx = int(e2_idx)
-                    if DEBUG:
-                        print('Data : ', get_data_struct)
-                        print('Index/Value: ', e2_idx)
                     return [op_func(get_data_struct, e2_idx), sig]
                 # ['append', ['vector', 2, 3, 4, 5], 2]
                 elif root == 'append':
@@ -453,6 +464,7 @@ def evaluate_program(ast, sig={}, l={}):
                     return [fnname, sig]
             # Get distribution
             elif root in dist_ops.keys():
+                 # import pdb; pdb.set_trace()
                 op_func = dist_ops[root]
                 if len(tail) == 2:
                     # Check for single referenced string
@@ -471,8 +483,20 @@ def evaluate_program(ast, sig={}, l={}):
                     para1, sig = evaluate_program([param1], sig=sig, l=l)
                     para2, sig = evaluate_program([param2], sig=sig, l=l)
                     # Make sure to have it in torch tensor
-                    para1 = _totensor(x=para1)
-                    para2 = _totensor(x=para2)
+                    try:
+                        para1 = _totensor(x=para1)
+                    except:
+                        # Most likely a tensor inside a list
+                        if isinstance(para1, list):
+                            para1 = para1[0]
+                            para1 = _totensor(x=para1)
+                    try:
+                        para2 = _totensor(x=para2)
+                    except:
+                        # Most likely a tensor inside a list
+                        if isinstance(para2, list):
+                            para2 = para2[0]
+                            para2 = _totensor(x=para2)
                     if DEBUG:
                         print('Eval Sampler Parameter-1: ', para1)
                         print('Eval Sampler Parameter-2: ', para2, "\n")
@@ -490,7 +514,13 @@ def evaluate_program(ast, sig={}, l={}):
                     if DEBUG:
                         print('Eval Sampler Parameter-1: ', para1)
                     # Make sure to have it in torch tensor
-                    para1 = _totensor(x=para1)
+                    try:
+                        para1 = _totensor(x=para1)
+                    except:
+                        # Most likely a tensor inside a list
+                        if isinstance(para1, list):
+                            para1 = para1[0]
+                            para1 = _totensor(x=para1)
                     if DEBUG:
                         print('Tensor Sampler Parameter-1: ', para1, "\n")
                     return [op_func(para1), sig]
@@ -510,6 +540,9 @@ def evaluate_program(ast, sig={}, l={}):
             # Observe
             elif root == 'observe':
                 # import pdb; pdb.set_trace()
+                if DEBUG:
+                    print('Observe tail: ', tail)
+                    print('Observe tail: ', len(tail))
                 if len(tail) == 2:
                     # Check for single referenced string
                     if isinstance(tail[0], str):
@@ -532,11 +565,14 @@ def evaluate_program(ast, sig={}, l={}):
                 if DEBUG:
                     print('Observe distribution: ', distn)
                     print('Observe Value: ', value, "\n")
-                # Obtain likelihood
-                if "logW" in sig.keys():
-                    sig["logW"] += distn.log_prob(value)
-                else:
-                    sig["logW"]  = distn.log_prob(value)
+                # Obtain likelihood-- cases where it can be obtained
+                try:
+                    if "logW" in sig.keys():
+                        sig["logW"] += distn.log_prob(value)
+                    else:
+                        sig["logW"]  = distn.log_prob(value)
+                except:
+                    pass
                 return [value, sig]
             # Most likely a single element list or function name
             else:
@@ -834,6 +870,49 @@ def run_hw2_tests():
             # Empty globals funcs
             rho = {}
 
+def my_tests():
+    # My tests
+    l = {'observe3': 2.1, 'observe4': 3.9, 'observe5': 5.3, 'observe6': 7.7,\
+          'observe7': 10.2, 'observe8': 12.9, 'sample2': torch.tensor([-15.6374]),\
+          'sample1': [torch.tensor([-2.3942])]}
+    ast = [['normal', ['+', ['*', 'sample1', 1.0], 'sample2'], 1.0]]
+
+    ret, sig = evaluate_program(ast, l=l)
+    print('Running evaluation-based-sampling for my test')
+    print("Evaluation Output: ", ret)
+
+    l = {'observe8': 1.1, 'observe10': 2.1, 'observe12': 2.0, 'observe14': 1.9,\
+         'observe16': 0.0, 'observe18': -0.1, 'observe20': -0.05,\
+         'sample6': torch.tensor([0.4358, 0.0157, 0.5484]),\
+         'sample13': [torch.tensor(2)], 'sample19': [torch.tensor(1)],\
+         'sample1': [torch.tensor([0.0391])],\
+         'sample7': [torch.tensor(2)],\
+         'sample4': [torch.tensor([3.7046])], 'sample3': [torch.tensor([1.2139])],\
+         'sample2': [torch.tensor([12.3055])], 'sample5': [torch.tensor([0.9708])],\
+         'sample17': [torch.tensor(0)], 'sample0': [torch.tensor([-9.7500])],\
+         'sample9': [torch.tensor(2)], 'sample15': [torch.tensor(2)],
+         'sample11': [torch.tensor(2)]}
+
+    ast = [['observe', ['get', ['vector', ['normal', 'sample0', 'sample1'], ['normal', 'sample2', 'sample3'], ['normal', 'sample4', 'sample5']], 'sample7'], 1.1]]
+
+    ret, sig = evaluate_program(ast, l=l)
+    print('Running evaluation-based-sampling for my test')
+    print("Evaluation Output: ", ret)
+
+    l={'sample2': [torch.tensor([16.1031])], 'sample9': [torch.tensor(1)],\
+       'sample17': [torch.tensor(0)], 'sample6': [torch.tensor([0.3119, 0.1449, 0.5432])],\
+       'sample5': [torch.tensor([0.1669])], 'sample3': [torch.tensor([0.4494])],\
+       'sample15': [torch.tensor(0)], 'sample19': [torch.tensor(2)], 'sample1': [torch.tensor([0.0649])],\
+       'sample13': [torch.tensor(2)], 'sample0': [torch.tensor([-6.3466])], 'sample7': [torch.tensor(0)],\
+       'sample11': [torch.tensor(2)], 'sample4': [torch.tensor([3.3935])]
+       }
+    ast = [['discrete', 'sample6']]
+
+    ret, sig = evaluate_program(ast, l=l)
+    print('Running evaluation-based-sampling for my test')
+    print("Evaluation Output: ", ret)
+
+
 #------------------------------MAIN--------------------------------------------
 if __name__ == '__main__':
     # Change the path
@@ -849,8 +928,9 @@ if __name__ == '__main__':
     # # Run HW-2 Tests
     # run_hw2_tests()
 
+
+    for i in range(1,2):
     # for i in range(1,5):
-    for i in range(4,5):
         # Note: this path should be with respect to the daphne path!
         # ast = daphne(['desugar', '-i', f'{program_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/HW3/eval/{i}.json'
@@ -873,17 +953,18 @@ if __name__ == '__main__':
 
             print("--------------------------------")
             print("Importance sampling Evaluation: ")
-            num_samples = 1000
+            num_samples = 100000
             all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
 
             W_k = 0.0
             for k in range(num_samples):
                 r_l, W_l = all_output[k]
-                W_k += W_l
+                W_k += math.exp(W_l)
 
             expected_output = 0.0
             for l in range(num_samples):
                 r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
                 expected_output += ((W_l/W_k) * r_l)
             print("Output: ", expected_output)
             print("--------------------------------")

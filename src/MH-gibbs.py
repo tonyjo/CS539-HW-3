@@ -1,6 +1,7 @@
 import json
+import math
 import torch
-import torch.distributions as dist
+import torch.distributions as distributions
 from daphne import daphne
 # funcprimitives
 from evaluation_based_sampling import evaluate_program
@@ -104,7 +105,10 @@ def eval_path(path, l={}, Y={}, P={}):
                     print('Evaluated sample: ', output_)
 
             elif root == "observe*":
-                sample_eval = ["observe", tail]
+                try:
+                    sample_eval = ["observe", tail, p[2]]
+                except:
+                    sample_eval = ["observe", tail]
                 if DEBUG:
                     print('Sample AST: ', sample_eval)
                 output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
@@ -187,7 +191,7 @@ def traverse(G, node, visit={}, path=[], include_v=True):
 # Global vars
 global rho
 rho = {}
-DEBUG = True # Set to true to see intermediate outputs for debugging purposes
+DEBUG = False # Set to true to see intermediate outputs for debugging purposes
 def sample_from_joint(graph):
     """
     This function does ancestral sampling starting from the prior.
@@ -381,21 +385,119 @@ def sample_from_joint(graph):
 
     return None
 
-def GibbsAccept():
+#--------------------------------GIBBS-with-MH----------------------------------
+def eval_free_vars(v, X, Y, P):
+    # Setup Local vars
+    l = {}
+    sigma = {}
+     # Add Y to local vars
+    for y in Y.keys():
+        l[y] = Y[y]
+    # Add evaluated X to to local vars
+    for x in X.keys():
+        l[x] = X[x]
+
+    p = P[v] # [sample* [n, 5, [sqrt, 5]]]
+    root = p[0]
+    tail = p[1]
+
+    if DEBUG:
+        print('PMF for Node: ', p)
+        print('Empty sample Root: ', root)
+        print('Empty sample Root: ', tail)
+        print('Local vars: ', l)
+
+    if root == "sample*":
+        sample_eval = ["sample", tail]
+        if DEBUG:
+            print('Sample AST: ', sample_eval)
+        output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
+        if DEBUG:
+            print('Evaluated sample: ', output_)
+
+    elif root == "observe*":
+        try:
+            sample_eval = ["observe", tail, p[2]]
+        except:
+            sample_eval = ["observe", tail]
+        if DEBUG:
+            print('Sample AST: ', sample_eval)
+        output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
+        if DEBUG:
+            print('Evaluated sample: ', output_)
+
+    else:
+        raise AssertionError('Unsupported operation!')
+
+    return output_, sigma
+
+
+def GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y, G):
+    d  = Q_x[x]
+    d_ = Q_x[x]
+    log_alpha = d.log_prob(X_[x]) - d_.log_prob(X_n[x])
+    Vx = set([x])
+    # Collect v whose densities depend of x
+    for vi in V:
+        path = []
+        path = traverse(G=G, node=vi, visit={}, path=path)
+        # List Reverse
+        path.reverse()
+        if DEBUG:
+            print(vi, ' graph path: ', path)
+        if x in path:
+            path = set(path)
+            Vx = Vx.union(path)
+        else:
+            continue
+    Vx = list(Vx)
+    # import pdb; pdb.set_trace()
+    if DEBUG:
+        print('Vs that depend on x:', Vx)
+    for v in Vx:
+        log_alpha = log_alpha - eval_free_vars(v=v, X=X_n, Y=Y, P=P)[0]
+        log_alpha = log_alpha + eval_free_vars(v=v, X=X_,  Y=Y, P=P)[0]
+    # import pdb; pdb.set_trace()
+    if torch.is_tensor(log_alpha):
+        log_alpha = log_alpha.tolist()
+    if DEBUG:
+        print('Log Alpha:', log_alpha)
     # Change from log
-    alpha = math.exp(alpha)
+    if isinstance(log_alpha, list):
+        alpha = []
+        for i in range(len(log_alpha)):
+            alphai = math.exp(log_alpha[i])
+            alpha.append(alphai)
+    else:
+        alpha = math.exp(log_alpha)
+
     return alpha
 
-def GibbsStep(X_, Q_x, V, X, O, A, P, Y):
+def GibbsStep(X_, Q_x, V, X, O, A, P, Y, G):
     uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
     for x in X:
         d = Q_x[x]
         X_n = X_
         X_n[x] = d.sample()
-        alpha = GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y)
+        alpha = GibbsAccept(x=x, X_=X_, X_n=X_n, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G)
         u = (uniform_dist.sample()).item()
-        if u < alpha:
-            X_ = X_n
+        if DEBUG:
+            print('Alpha: ', alpha)
+            print('Unf: ', u)
+            print('X_:', X_)
+        if isinstance(alpha, list):
+            all_true = True
+            for a in alpha:
+                if u < a:
+                    continue
+                else:
+                    all_true = False
+                    break
+            if all_true:
+                X_ = X_n
+        else:
+            if u < alpha:
+                X_ = X_n
     return X_
 
 def Gibbs(graph, S):
@@ -421,10 +523,12 @@ def Gibbs(graph, S):
     all_nodes = set(V)
     O = set(Y.keys())
     X = list(all_nodes - O)
+    O = list(O)
     if DEBUG:
+        print('Observed Vars: ', O)
         print('Latent Vars: ', X)
 
-    X_ = {}
+    X_s_minus_1 = {}
     for lvar in X:
         path = []
         path = traverse(G=G_, node=lvar, visit={}, path=path)
@@ -437,23 +541,34 @@ def Gibbs(graph, S):
         if DEBUG:
             print('Evaluated reverse graph path: ', path)
             print('Evaluated graph output: ', output)
-        X_[lvar] = output[-1]
+        X_s_minus_1[lvar] = output[-1]
+    # import pdb; pdb.set_trace()
     if DEBUG:
-        print('Evaluted Latent Vars: ', X_)
+        print('Evaluted Latent Vars: ', X_s_minus_1)
+        print('\n')
 
     Q_x = {}
+    # Setup local vars
+    l = {**X_s_minus_1}
     for lvar in X:
         p = P[lvar]
         root = p[0]
         tail = p[1]
         if root == "sample*":
-            output_, sigma = evaluate_program(ast=[tail], sig=sigma, l={})
+            output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
             Q_x[lvar] = output_
         else:
             continue
+    # import pdb; pdb.set_trace()
     if DEBUG:
         print('Evaluted Latent Vars dist.: ', Q_x)
 
+    all_outputs = []
+    for x in range(S):
+        X_s = GibbsStep(X_=X_s_minus_1, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G_)
+        all_outputs.append([X_s])
+
+    return all_outputs
 
 #------------------------------MAIN--------------------------------------------
 if __name__ == '__main__':
@@ -463,7 +578,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(1,2):
+    for i in range(1,5):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -482,27 +597,10 @@ if __name__ == '__main__':
             # print("Evaluation Output: \n", output)
             # print("\n")
 
-            Gibbs(graph=ast, S=10)
-
-            # print(output)
-            #
-            # print("--------------------------------")
-            # print("Importance sampling Evaluation: ")
-            # num_samples = 1000
-            # all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
-            #
-            # W_k = 0.0
-            # for k in range(num_samples):
-            #     r_l, W_l = all_output[k]
-            #     W_k += W_l
-            #
-            # expected_output = 0.0
-            # for l in range(num_samples):
-            #     r_l, W_l = all_output[l]
-            #     expected_output += ((W_l/W_k) * r_l)
-            # print("Output: ", expected_output)
-            # print("--------------------------------")
-            # print("\n")
+            output = Gibbs(graph=ast, S=1)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            print("Evaluation Output: \n", output)
+            print("\n")
 
         elif i == 2:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
@@ -510,8 +608,13 @@ if __name__ == '__main__':
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            print("Single Run Evaluation: ")
-            output = sample_from_joint(ast)
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            output = Gibbs(graph=ast, S=1)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
             print("Evaluation Output: \n", output)
             print("\n")
 
@@ -521,10 +624,14 @@ if __name__ == '__main__':
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            output = sample_from_joint(ast)
-            print("Single Run Evaluation: ")
-            output = sample_from_joint(ast)
-            print("Evaluation Output: ", output)
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: ", output)
+            # print("\n")
+
+            output = Gibbs(graph=ast, S=1)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            print("Evaluation Output: \n", output)
             print("\n")
 
         elif i == 4:
@@ -533,7 +640,12 @@ if __name__ == '__main__':
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            print("Single Run Evaluation: ")
-            output = sample_from_joint(ast)
-            print("Evaluation Output: ", output)
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: ", output)
+            # print("\n")
+
+            output = Gibbs(graph=ast, S=1)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            print("Evaluation Output: \n", output)
             print("\n")
