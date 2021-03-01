@@ -39,6 +39,16 @@ two_ops={'get': lambda x, idx: _get(x, idx),
         "and": lambda a, b: a and b,
 }
 
+dist_ops = {"normal":lambda mu, sig: distributions.normal.Normal(loc=mu, scale=sig),
+            "beta":lambda a, b: distributions.beta.Beta(concentration1=a, concentration0=b),
+            "gamma": lambda concentration, rate: distributions.gamma.Gamma(concentration=concentration, rate=rate),
+            "uniform": lambda low, high: distributions.uniform.Uniform(low=low, high=high),
+            "exponential":lambda rate: distributions.exponential.Exponential(rate=rate),
+            "discrete": lambda probs: distributions.categorical.Categorical(probs=probs),
+            "dirichlet": lambda concentration: distributions.dirichlet.Dirichlet(concentration=concentration),
+            "bernoulli": lambda probs: distributions.bernoulli.Bernoulli(probs=probs),
+            "flip": lambda probs: distributions.bernoulli.Bernoulli(probs=probs)
+}
 
 ## GRAPH Utils
 def make_link(G, node1, node2):
@@ -177,7 +187,7 @@ def traverse(G, node, visit={}, path=[], include_v=True):
 # Global vars
 global rho
 rho = {}
-DEBUG = False # Set to true to see intermediate outputs for debugging purposes
+DEBUG = True # Set to true to see intermediate outputs for debugging purposes
 def sample_from_joint(graph):
     """
     This function does ancestral sampling starting from the prior.
@@ -342,7 +352,7 @@ def sample_from_joint(graph):
             for ei in range(len(tail)):
                 if ei in V:
                     path = []
-                    output, sigma  = eval_node(node=ei, path=path, G=G_, Y=Y, P=P)
+                    output, sigma_ = eval_node(node=ei, path=path, G=G_, Y=Y, P=P)
                     output = output[-1]
                 else:
                     output, sigma = evaluate_program([ei], sig=sigma, l=l)
@@ -371,10 +381,65 @@ def sample_from_joint(graph):
 
     return None
 
-def Q_x():
-    sampler, sig = evaluate_program(tail, sig=sig, l=l)
+def GibbsStep(X_, V, X, O, A, P, Y):
+    pass
+
+def Gibbs(graph, S):
+    D, G, E = graph[0], graph[1], graph[2]
+
+    # Compiled graph
+    V = G['V']
+    A = G['A']
+    P = G['P']
+    Y = G['Y']
+    # Find the link nodes aka nodes not in V
+    adj_list = []
+    for a in A.keys():
+        links = A[a]
+        for link in links:
+            adj_list.append((a, link))
+    # Create Graph
+    G_ = {}
+    for (n1, n2) in adj_list:
+        G_ = make_link(G=G_, node1=n1, node2=n2)
+
+    # Collect Latent Vars
+    all_nodes = set(V)
+    O = set(Y.keys())
+    X = list(all_nodes - O)
     if DEBUG:
-        print('Sampler: ', sampler)
+        print('Latent Vars: ', X)
+
+    X_ = {}
+    for lvar in X:
+        path = []
+        path = traverse(G=G_, node=lvar, visit={}, path=path)
+        if DEBUG:
+            print('Evaluated graph path: ', path)
+        # List Reverse
+        path.reverse()
+        # Evaluate path
+        output, sigma = eval_path(path, l={}, Y=Y, P=P)
+        if DEBUG:
+            print('Evaluated reverse graph path: ', path)
+            print('Evaluated graph output: ', output)
+        X_[lvar] = output[-1]
+    if DEBUG:
+        print('Evaluted Latent Vars: ', X_)
+
+    Q_x = {}
+    for lvar in X:
+        p = P[lvar]
+        root = p[0]
+        tail = p[1]
+        if root == "sample*":
+            output_, sigma = evaluate_program(ast=[tail], sig=sigma, l={})
+            Q_x[lvar] = output_
+        else:
+            continue
+    if DEBUG:
+        print('Evaluted Latent Vars dist.: ', Q_x)
+
 
 #------------------------------MAIN--------------------------------------------
 if __name__ == '__main__':
@@ -384,7 +449,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(1,5):
+    for i in range(1,2):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -398,10 +463,12 @@ if __name__ == '__main__':
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            print("Single Run Evaluation: ")
-            output = sample_from_joint(ast)
-            print("Evaluation Output: \n", output)
-            print("\n")
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            Gibbs(graph=ast, S=10)
 
             # print(output)
             #
