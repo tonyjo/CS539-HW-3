@@ -281,11 +281,19 @@ def computeH(X, Y, X_, Y_, R, M):
         print('Rm: ', Rm)
         print('Rm: ', Rm.shape)
         print('RM.T: ', (torch.transpose(Rm, 0, 1)).shape)
-    M1 = torch.inverse(M)
-    K1 = torch.matmul(torch.transpose(Rm, 0, 1), M1.type(torch.float32))
-    K  = torch.matmul(K1, Rm)
-    K = K/2.0
-    K = K[0]
+
+    if len(X.keys()) == 1:
+        M1 = 1/M # to avoid zero computation, just in case
+        K = Rm * M1 * Rm
+        K = K/2.0
+        K = K[0]
+    else:
+
+        M1 = torch.inverse(M)
+        K1 = torch.matmul(torch.transpose(Rm, 0, 1), M1.type(torch.float32))
+        K  = torch.matmul(K1, Rm)
+        K = K/2.0
+        K = K[0]
 
     H_ = U + K
 
@@ -400,6 +408,7 @@ def HMC(graph, S, T, eps):
         print('X matrix Shape: \n', Xm.shape)
 
     if Xm.size == 1:
+        mean = torch.tensor([0.0])
         M = torch.tensor([1.0])
     else:
         Xm = np.expand_dims(Xm, axis=1)
@@ -411,7 +420,7 @@ def HMC(graph, S, T, eps):
         M = np.cov(XX)
         M = np.sqrt(np.diag(np.diag(M)))
         M = torch.from_numpy(M)
-    mean = torch.zeros(M.shape[0], dtype=torch.double)
+        mean = torch.zeros(M.shape[0], dtype=torch.double)
     if DEBUG:
         print('\n')
         print('Mean matrix: \n', mean)
@@ -421,7 +430,10 @@ def HMC(graph, S, T, eps):
 
     R_0 = {}
     uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
-    normal_dist  = distributions.multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=M)
+    if Xm.size == 1:
+        normal_dist = distributions.normal.Normal(loc=mean, scale=M)
+    else:
+        normal_dist = distributions.multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=M)
     all_outputs  = []
     for i in range(S):
         R_0_ = normal_dist.sample() # X_ x 1
@@ -454,7 +466,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(2,3):
+    for i in range(1,2):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -490,22 +502,6 @@ if __name__ == '__main__':
             # print("\n")
 
             output = HMC(graph=ast, S=1, T=1, eps=0.01)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
-            print("\n")
-
-        if i == 3:
-            print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
-            ast_path = f'./jsons/HW3/graph/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
-            # print("Single Run Evaluation: ")
-            # output = sample_from_joint(ast)
-            # print("Evaluation Output: \n", output)
-            # print("\n")
-
-            output = HMC(graph=ast, S=1, T=1, eps=0.001)
             print("Gibbs Sampling with Metropolis-Hastings Updates: ")
             print("Evaluation Output: \n", output)
             print("\n")
