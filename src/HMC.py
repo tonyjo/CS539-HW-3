@@ -1,5 +1,6 @@
 import json
 import math
+import numpy as np
 import torch
 import torch.distributions as distributions
 from daphne import daphne
@@ -190,11 +191,11 @@ def traverse(G, node, visit={}, path=[], include_v=True):
 #-------------------------------------HMC---------------------------------------
 # Global vars
 DEBUG = True # Set to true to see intermediate outputs for debugging purposes
-def grad_UX(X_, Y_, X, Y):
+def grad_UX(X, Y, X_, Y_):
     Ex = 0.0
     Ey = 0.0
     for x in X_.keys():
-        Ex = Ex + torch.log(X_[x])
+        Ex = Ex + X_[x].log_prob(X[x])
     for y in Y_.keys():
         Ey = Ey + torch.log(Y_[y])
     Eu = -1.0*(Ex + Ey)
@@ -204,57 +205,91 @@ def grad_UX(X_, Y_, X, Y):
 
     # Collect grads
     dU = {}
-    for x in X_.keys():
-        dU[x] = X_[x].grad
+    for x in X.keys():
+        dU[x] = X[x].grad
     for y in Y_.keys():
         dU[y] = Y_[y].grad
 
     return dU
 
 def leapFrog(X, Y, X_, Y_, R_0, T, eps):
-    gradU = grad_UX(X_=X_, Y_=Y_, X=X, Y=Y)
+    gradU = grad_UX(X=X, Y=Y, X_=X_, Y_=Y_)
     if DEBUG:
         print("Gradients: ", gradU)
 
     R_12 = {}
-    for du in gradU.keys():
-        R_12[du] = R_0[du] - (0.5) * eps * gradU[du]
+    for lvar in X_.keys():
+        R_12[lvar] = R_0[lvar] - (0.5) * eps * gradU[lvar]
+    if DEBUG:
+        print("R12: ", R_12)
 
     for t in range(T):
-        for x in X_.keys():
-            X_[x] = X_[x] + (eps * R_12[x])
-        dU_t = grad_UX(X_=X_, Y_=Y_, X=X, Y=Y)
-        for x in X_.keys():
-            R_12[x] = R_12[x] - (eps * dU_t[x])
+        for x in X.keys():
+            with torch.no_grad():
+                X[x] = X[x] + (eps * R_12[x])
+        # Add gradient support back
+        for x in X.keys():
+            X[x].requires_grad=True
+        gradU_t = grad_UX(X=X, Y=Y, X_=X_, Y_=Y_)
+        for x in R_12.keys():
+            R_12[x] = R_12[x] - (eps * gradU_t[x])
 
     X_T = {}
-    for x in X_.keys():
-        X_T[x] = X_[x] + (eps * R_12[x])
+    for x in X.keys():
+        with torch.no_grad():
+            X_T[x] = X[x] + (eps * R_12[x])
+    # Add gradient support back
+    for x in X.keys():
+        X_T[x].requires_grad=True
+
     R_T = {}
     dU_t = grad_UX(X_=X_, Y_=Y_, X=X, Y=Y)
-    for x in X_.keys():
-        R_T[x] = R_12[x] - (eps * dU_t[x])
+    for x in R_12.keys():
+        R_T[x] = R_12[x] - (0.5 * eps * dU_t[x])
 
     return X_T, R_T
 
-def H(X_, Y_, X, Y, R, M):
+def computeH(X, Y, X_, Y_, R, M):
     # Compute U
     Ex = 0.0
     Ey = 0.0
     for x in X_.keys():
-        Ex = Ex + torch.log(X_[x])
+        Ex = Ex + X_[x].log_prob(X[x])
     for y in Y_.keys():
         Ey = Ey + torch.log(Y_[y])
-    U = -1.0*(Ex + Ey)
+    U  = -1.0*(Ex + Ey)
+
     # Compute K
-    K = 0.0
-    for r in R.keys():
-        K += R[r]*torch.inverse(M[r])*R[r]
-    K = k/2.0
+    Rm = torch.zeros(0, dtype=torch.float32)
+    for lvar in R.keys():
+        xm = R[lvar]
+        # Check if not torch tensor
+        if not torch.is_tensor(xm):
+            if isinstance(xm, list):
+                xm = torch.tensor(xm, dtype=torch.float32)
+            else:
+                xm = torch.tensor([xm], dtype=torch.float32)
+        # Check for 0 dimensional tensor
+        elif xm.shape == torch.Size([]):
+            xm = torch.tensor([xm.item()], dtype=torch.float32)
+        try:
+            Rm = torch.cat((Rm, xm))
+        except:
+            raise AssertionError('Cannot append the torch tensors')
+    Rm = torch.unsqueeze(Rm, axis=1)
+    if DEBUG:
+        print('Rm: ', Rm)
+        print('Rm: ', Rm.shape)
+        print('RM.T: ', (torch.transpose(Rm, 0, 1)).shape)
+    M1 = torch.inverse(M)
+    K1 = torch.matmul(torch.transpose(Rm, 0, 1), M1.type(torch.float32))
+    K  = torch.matmul(K1, Rm)
+    K = K/2.0
+    K = K[0]
 
-    H = U + K
+    H_ = U + K
 
-    return H
+    return H_
 
 
 def HMC(graph, S, T, eps):
@@ -300,7 +335,10 @@ def HMC(graph, S, T, eps):
             print('Evaluated reverse graph path: ', path)
             print('Evaluated graph output: ', output)
         output_ = output[-1]
-        output_ = torch.tensor(output_, requires_grad=True)
+        try:
+            output_ = torch.tensor(output_, requires_grad=True, dtype=torch.float32)
+        except:
+            output_ = torch.tensor(output_[0], requires_grad=True, dtype=torch.float32)
         X_0[lvar] = output_
     # import pdb; pdb.set_trace()
     if DEBUG:
@@ -308,36 +346,102 @@ def HMC(graph, S, T, eps):
         print('Evaluted Latent Vars: ', X_0)
         print('\n')
 
-    Y_0 = {}
+    X_map = {}
+    # Setup local vars
+    l = {**X_0}
+    for lv in X:
+        p = P[lv]
+        root = p[0]
+        tail = p[1]
+        if root == "sample*":
+            output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+            X_map[lv] = output_
+        else:
+            continue
+    if DEBUG:
+        print('\n')
+        print('Evaluted Latent dist: ', X_map)
+        print('\n')
+
+    Y_map = {}
     for yvar in Y.keys():
         output_ = Y[yvar]
         if isinstance(output_, int):
             output_ = [float(output_)]
         output_ = torch.tensor(output_, requires_grad=True)
-        Y_0[yvar] = output_
+        Y_map[yvar] = output_
     # import pdb; pdb.set_trace()
     if DEBUG:
         print('\n')
-        print('Evaluted Observed Vars: ', Y_0)
+        print('Evaluted Observed Vars: ', Y_map)
         print('\n')
 
-    # Compute variance
-    M = {}
-    for lvar in X:
+    # Compute covariance
+    Xm = torch.zeros(0, dtype=torch.float32)
+    for lvar in X_0.keys():
+        xm = X_0[lvar]
+        # Check if not torch tensor
+        if not torch.is_tensor(xm):
+            if isinstance(xm, list):
+                xm = torch.tensor(xm, dtype=torch.float32)
+            else:
+                xm = torch.tensor([xm], dtype=torch.float32)
+        # Check for 0 dimensional tensor
+        elif xm.shape == torch.Size([]):
+            xm = torch.tensor([xm.item()], dtype=torch.float32)
+        try:
+            Xm = torch.cat((Xm, xm))
+        except:
+            raise AssertionError('Cannot append the torch tensors')
+    Xm = Xm.cpu().detach().numpy()
+    if DEBUG:
+        print('\n')
+        print('X matrix: \n', Xm)
+        print('X matrix Shape: \n', Xm.shape)
+
+    if Xm.size == 1:
+        M = torch.tensor([1.0])
+    else:
+        Xm = np.expand_dims(Xm, axis=1)
+        XX = np.dot(Xm, Xm.T)
+        if DEBUG:
+            print('\n')
+            print('XX matrix: \n', XX)
+            print('XX matrix shape: \n', XX.shape)
+        M = np.cov(XX)
+        M = np.sqrt(np.diag(np.diag(M)))
+        M = torch.from_numpy(M)
+    mean = torch.zeros(M.shape[0], dtype=torch.double)
+    if DEBUG:
+        print('\n')
+        print('Mean matrix: \n', mean)
+        print('Covariance matrix: \n', M)
+        print('Covariance matrix Shape: \n', M.shape)
+        print('\n')
 
     R_0 = {}
     uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
-    all_outputs = []
+    normal_dist  = distributions.multivariate_normal.MultivariateNormal(loc=mean, covariance_matrix=M)
+    all_outputs  = []
     for i in range(S):
-        X_T, R_T = leapFrog(X=X, Y=Y, X_=X_0, Y_=Y_0, R_0=R, T=T, eps=eps)
+        R_0_ = normal_dist.sample() # X_ x 1
+        # Convert to dict
+        R_0 = {}
+        i = 0
+        for lvar in X_0.keys():
+            R_0[lvar] = R_0_[i]
+            i += 1
+        XT, RT = leapFrog(X=X_0, Y=Y, X_=X_map, Y_=Y_map, R_0=R_0, T=T, eps=eps)
         u = (uniform_dist.sample()).item()
-        accept = torch.exp((-1.0 * H(X_, Y_, X, Y, R, M)) + H(X_, Y_, X, Y, R, M))
+        accept1 = computeH(X=XT,  Y=Y, X_=X_map, Y_=Y_map, R=RT, M=M)
+        accept2 = computeH(X=X_0, Y=Y, X_=X_map, Y_=Y_map, R=R_0, M=M)
+        accept = torch.exp((-1.0 * accept1) + accept2)
         if DEBUG:
             print('\n')
             print('Accept: ', accept)
         if u < accept:
-            X_ =  X_T
-        all_outputs.append([X_])
+            X_0 = XT
+        all_outputs.append([X_0])
 
     return all_outputs
 
@@ -350,7 +454,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(1,2):
+    for i in range(2,3):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -359,6 +463,38 @@ if __name__ == '__main__':
         # print('\n\n\nSample of prior of program {}:'.format(i))
 
         if i == 1:
+            print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
+            ast_path = f'./jsons/HW3/graph/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            output = HMC(graph=ast, S=1, T=10, eps=0.001)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            print("Evaluation Output: \n", output)
+            print("\n")
+
+        if i == 2:
+            print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
+            ast_path = f'./jsons/HW3/graph/{i}.json'
+            with open(ast_path) as json_file:
+                ast = json.load(json_file)
+            # print(ast)
+            # print("Single Run Evaluation: ")
+            # output = sample_from_joint(ast)
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            output = HMC(graph=ast, S=1, T=1, eps=0.01)
+            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            print("Evaluation Output: \n", output)
+            print("\n")
+
+        if i == 3:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/graph/{i}.json'
             with open(ast_path) as json_file:
