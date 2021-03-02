@@ -559,11 +559,6 @@ def Gibbs(graph, S):
     if DEBUG:
         print('Evaluted Latent Vars dist.: ', Q_x)
 
-    print('Observed Vars: ', O)
-    print('Evaluted Latent Vars: ', X_s_minus_1)
-    print('Evaluted Latent Vars dist.: ', Q_x)
-    print('\n')
-
     all_outputs = []
     for x in range(S):
         X_s = GibbsStep(X_=X_s_minus_1, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G_)
