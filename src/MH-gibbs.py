@@ -406,6 +406,7 @@ def eval_free_vars(v, X, Y, P):
         print('Empty sample Root: ', root)
         print('Empty sample Root: ', tail)
         print('Local vars: ', l)
+        print('\n')
 
     if root == "sample*":
         sample_eval = ["sample", tail]
@@ -424,7 +425,8 @@ def eval_free_vars(v, X, Y, P):
             print('Sample AST: ', sample_eval)
         output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
         if DEBUG:
-            print('Evaluated sample: ', output_)
+            print('Evaluated sample: \n', output_, '\n', sigma)
+            print('\n')
 
     else:
         raise AssertionError('Unsupported operation!')
@@ -435,43 +437,37 @@ def eval_free_vars(v, X, Y, P):
 def GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y, G):
     d  = Q_x[x]
     d_ = Q_x[x]
+    x_x = X_[x]
+    x_nx = X_n[x]
     log_alpha = d.log_prob(X_[x]) - d_.log_prob(X_n[x])
-    Vx = set([x])
-    # Collect v whose densities depend of x
-    for vi in V:
-        path = []
-        path = traverse(G=G, node=vi, visit={}, path=path)
-        # List Reverse
-        path.reverse()
-        if DEBUG:
-            print(vi, ' graph path: ', path)
-        if x in path:
-            path = set(path)
-            Vx = Vx.union(path)
-        else:
-            continue
-    Vx = list(Vx)
+    Vx = A[x]
     # import pdb; pdb.set_trace()
     if DEBUG:
-        print('Vs that depend on x:', Vx)
+        print('Pre-Log Alpha:', x_x, x_nx, log_alpha)
+        print('Distribution-1: ', d)
+        print('Distribution-2: ', d_)
+        print('Verticies: ', Vx, ' that depend on ', x)
+        print('\n')
     for v in Vx:
-        log_alpha = log_alpha - eval_free_vars(v=v, X=X_n, Y=Y, P=P)[0]
-        log_alpha = log_alpha + eval_free_vars(v=v, X=X_,  Y=Y, P=P)[0]
+        _, sigma  = eval_free_vars(v=v, X=X_n, Y=Y, P=P)
+        log_alpha = log_alpha - sigma["logW"]
+        _, sigma  = eval_free_vars(v=v, X=X_, Y=Y, P=P)
+        log_alpha = log_alpha + sigma["logW"]
+
     # import pdb; pdb.set_trace()
     if torch.is_tensor(log_alpha):
         log_alpha = log_alpha.tolist()
+
     if DEBUG:
         print('Log Alpha:', log_alpha)
-    # Change from log
+
     if isinstance(log_alpha, list):
-        alpha = []
-        for i in range(len(log_alpha)):
-            alphai = math.exp(log_alpha[i])
-            alpha.append(alphai)
-    else:
-        alpha = math.exp(log_alpha)
+        log_alpha = log_alpha[0]
+    # Change from log
+    alpha = math.exp(log_alpha)
 
     return alpha
+
 
 def GibbsStep(X_, Q_x, V, X, O, A, P, Y, G):
     uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
@@ -563,6 +559,11 @@ def Gibbs(graph, S):
     if DEBUG:
         print('Evaluted Latent Vars dist.: ', Q_x)
 
+    print('Observed Vars: ', O)
+    print('Evaluted Latent Vars: ', X_s_minus_1)
+    print('Evaluted Latent Vars dist.: ', Q_x)
+    print('\n')
+
     all_outputs = []
     for x in range(S):
         X_s = GibbsStep(X_=X_s_minus_1, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G_)
@@ -578,7 +579,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(1,5):
+    for i in range(3,4):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -618,6 +619,7 @@ if __name__ == '__main__':
             print("Evaluation Output: \n", output)
             print("\n")
 
+
         elif i == 3:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/graph/{i}.json'
@@ -632,6 +634,7 @@ if __name__ == '__main__':
             output = Gibbs(graph=ast, S=1)
             print("Gibbs Sampling with Metropolis-Hastings Updates: ")
             print("Evaluation Output: \n", output)
+            print("--------------")
             print("\n")
 
         elif i == 4:

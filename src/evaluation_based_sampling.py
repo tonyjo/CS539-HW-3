@@ -533,10 +533,22 @@ def evaluate_program(ast, sig={}, l={}):
                     print('Sampler: ', sampler)
                 # IF sample object then take a sample
                 try:
-                    sampler_ = sampler.sample()
+                    sample_ = sampler.sample()
                 except:
-                    sampler_ = sampler
-                return [sampler_, sig]
+                    sample_ = sampler
+                # Obtain likelihood-- cases where it can be obtained
+                try:
+                    if "logW" in sig.keys():
+                        sig["logW"] += sampler.log_prob(sample_)
+                    else:
+                        sig["logW"]  = sampler.log_prob(sample_)
+                except:
+                    if "logW" in sig.keys():
+                        sig["logW"] += 0.0
+                    else:
+                        sig["logW"]  = 0.0
+
+                return [sample_, sig]
             # Observe
             elif root == 'observe':
                 # import pdb; pdb.set_trace()
@@ -572,7 +584,10 @@ def evaluate_program(ast, sig={}, l={}):
                     else:
                         sig["logW"]  = distn.log_prob(value)
                 except:
-                    pass
+                    if "logW" in sig.keys():
+                        sig["logW"] += 0.0
+                    else:
+                        sig["logW"]  = 0.0
                 return [value, sig]
             # Most likely a single element list or function name
             else:
@@ -869,6 +884,7 @@ def run_hw2_tests():
 
             # Empty globals funcs
             rho = {}
+
 
 def my_tests():
     # My tests
