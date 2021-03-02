@@ -887,7 +887,7 @@ def run_hw2_tests():
 
 
 def my_tests():
-    # My tests
+    ## Test-1
     l = {'observe3': 2.1, 'observe4': 3.9, 'observe5': 5.3, 'observe6': 7.7,\
           'observe7': 10.2, 'observe8': 12.9, 'sample2': torch.tensor([-15.6374]),\
           'sample1': [torch.tensor([-2.3942])]}
@@ -915,6 +915,7 @@ def my_tests():
     print('Running evaluation-based-sampling for my test')
     print("Evaluation Output: ", ret)
 
+    ## Test-2
     l={'sample2': [torch.tensor([16.1031])], 'sample9': [torch.tensor(1)],\
        'sample17': [torch.tensor(0)], 'sample6': [torch.tensor([0.3119, 0.1449, 0.5432])],\
        'sample5': [torch.tensor([0.1669])], 'sample3': [torch.tensor([0.4494])],\
@@ -944,9 +945,7 @@ if __name__ == '__main__':
     # # Run HW-2 Tests
     # run_hw2_tests()
 
-
-    for i in range(1,2):
-    # for i in range(1,5):
+    for i in range(1,5):
         # Note: this path should be with respect to the daphne path!
         # ast = daphne(['desugar', '-i', f'{program_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/HW3/eval/{i}.json'
@@ -955,7 +954,7 @@ if __name__ == '__main__':
         # print('\n\n\nSample of posterior of program {}:'.format(i))
 
         if i == 1:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/eval/{i}.json'
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
@@ -977,25 +976,22 @@ if __name__ == '__main__':
                 r_l, W_l = all_output[k]
                 W_k += math.exp(W_l)
 
-            expected_output = 0.0
+            EX = 0.0
             for l in range(num_samples):
                 r_l, W_l = all_output[l]
                 W_l = math.exp(W_l)
-                expected_output += ((W_l/W_k) * r_l)
-            print("Output: ", expected_output)
+                EX += ((W_l/W_k) * r_l)
+            print("Posterior Mean: ", EX)
             print("--------------------------------")
             print("\n")
 
-            print("--------------------------------")
-            print("MH sampling Evaluation: ")
-            num_samples = 1000
-            all_output = independent_MH(ast=ast, S=num_samples)
-            expected_output = 0.0
+            EX2 = 0.0
             for l in range(num_samples):
-                r_l = all_output[l]
-                expected_output += r_l[0]
-            expected_output = expected_output/num_samples
-            print("Output: ", expected_output)
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX2 += ((W_l/W_k) * torch.pow(r_l, 2))
+            var = EX2 - torch.pow(EX, 2)
+            print("Posterior Variance:", var)
             print("--------------------------------")
             print("\n")
 
@@ -1003,7 +999,7 @@ if __name__ == '__main__':
             rho = {}
 
         elif i == 2:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/eval/{i}.json'
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
@@ -1017,67 +1013,120 @@ if __name__ == '__main__':
 
             print("--------------------------------")
             print("Importance sampling Evaluation: ")
-            num_samples = 1000
-            all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
+            num_samples = 100000
+            all_output  = likelihood_weighting_IS(ast=ast, L=num_samples)
+
             W_k = 0.0
             for k in range(num_samples):
                 r_l, W_l = all_output[k]
-                W_k += W_l
+                W_k += math.exp(W_l)
 
-            expected_bias = 0.0
-            expected_slope = 0.0
+            EX_slope = 0.0
+            EX_bias = 0.0
             for l in range(num_samples):
                 r_l, W_l = all_output[l]
-                expected_bias += ((W_l/W_k) * r_l[1])
-                expected_slope += ((W_l/W_k) * r_l[0])
-            print("Bias Output: ", expected_bias)
-            print("Slope Output: ", expected_slope)
+                W_l = math.exp(W_l)
+                EX_slope += ((W_l/W_k) * r_l[0])
+                EX_bias  += ((W_l/W_k) * r_l[1])
+            print("Posterior Bias  Mean: ", EX_bias)
+            print("Posterior Slope Mean: ", EX_slope)
             print("--------------------------------")
             print("\n")
 
-            print("--------------------------------")
-            print("MH sampling Evaluation: ")
-            num_samples = 1000
-            all_output  = independent_MH(ast=ast, S=num_samples)
-            expected_bias = 0.0
-            expected_slope = 0.0
+            EX2_ = []
             for l in range(num_samples):
-                r_l = all_output[l]
-                expected_bias += r_l[0][1]
-                expected_slope += r_l[0][0]
-            expected_bias = expected_bias/num_samples
-            expected_slope = expected_slope/num_samples
-            print("Bias Output: ", expected_bias)
-            print("Slope Output: ", expected_slope)
-            print("--------------------------------")
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX2_.extend([(W_l/W_k) * r_l[0] * r_l[1]])
+            covar = sum(EX2_) - (EX_slope * EX_bias)
+            print("Posterior Covariance : ", covar)
+            print("---------------------------------")
             print("\n")
 
             # Empty globals funcs
             rho = {}
 
         elif i == 3:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/eval/{i}.json'
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            print("Single Run Evaluation: ")
-            ret, sig = evaluate_program(ast)
-            print("Evaluation Output: ", ret, sig)
+            # print("Single Run Evaluation: ")
+            # ret, sig = evaluate_program(ast)
+            # print("Evaluation Output: ", ret, sig)
+            # print("\n")
+
+            print("--------------------------------")
+            print("Importance sampling Evaluation: ")
+            num_samples = 10000
+            all_output  = likelihood_weighting_IS(ast=ast, L=num_samples)
+
+            W_k = 0.0
+            for k in range(num_samples):
+                r_l, W_l = all_output[k]
+                W_k += math.exp(W_l)
+
+            EX = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX += ((W_l/W_k) * float(r_l))
+            print("Posterior Mean: ", EX)
+            print("--------------------------------")
+            print("\n")
+
+            EX2 = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX2 += ((W_l/W_k) * (float(r_l)**2))
+            var = EX2 - (EX**2)
+            print("Posterior Variance:", var)
+            print("--------------------------------")
             print("\n")
 
             # Empty globals funcs
             rho = {}
 
         elif i == 4:
-            print('Running evaluation-based-sampling for Task number {}:'.format(str(i+1)))
+            print('Running evaluation-based-sampling for Task number {}:'.format(str(i)))
             ast_path = f'./jsons/HW3/eval/{i}.json'
             with open(ast_path) as json_file:
                 ast = json.load(json_file)
             # print(ast)
-            print("Single Run Evaluation: ")
-            ret, sig = evaluate_program(ast)
-            print("Evaluation Output: ", ret, sig)
+            # print("Single Run Evaluation: ")
+            # ret, sig = evaluate_program(ast)
+            # print("Evaluation Output: ", ret, sig)
+            # print("\n")
+
+            print("--------------------------------")
+            print("Importance sampling Evaluation: ")
+            num_samples = 100000
+            all_output  = likelihood_weighting_IS(ast=ast, L=num_samples)
+
+            W_k = 0.0
+            for k in range(num_samples):
+                r_l, W_l = all_output[k]
+                W_k += math.exp(W_l)
+
+            EX = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX += ((W_l/W_k) * r_l)
+            print("Posterior Mean: ", EX)
+            print("--------------------------------")
+            print("\n")
+
+            EX2 = 0.0
+            for l in range(num_samples):
+                r_l, W_l = all_output[l]
+                W_l = math.exp(W_l)
+                EX2 += ((W_l/W_k) * torch.pow(r_l, 2))
+            var = EX2 - (EX)**2
+            print("Posterior Variance:", var)
+            print("--------------------------------")
             print("\n")
 
             # Empty globals funcs

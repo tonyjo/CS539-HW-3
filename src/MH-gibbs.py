@@ -560,9 +560,23 @@ def Gibbs(graph, S):
         print('Evaluted Latent Vars dist.: ', Q_x)
 
     all_outputs = []
+    joint_log_prob = 0.0
     for x in range(S):
         X_s = GibbsStep(X_=X_s_minus_1, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G_)
-        all_outputs.append([X_s])
+        # Compute joint
+        joint_log_prob = 0.0
+        for lvar in X_s.keys():
+            p = P[lvar]
+            x = X_s[lvar]
+            root = p[0]
+            tail = p[1]
+            if root == "sample*":
+                dist_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+                joint_log_prob += dist.log_prob(x)
+            else:
+                continue
+        # Collect
+        all_outputs.append([X_s, joint_log_prob])
 
     return all_outputs
 

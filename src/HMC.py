@@ -411,16 +411,8 @@ def HMC(graph, S, T, eps):
         mean = torch.tensor([0.0])
         M = torch.tensor([1.0])
     else:
-        Xm = np.expand_dims(Xm, axis=1)
-        XX = np.dot(Xm, Xm.T)
-        if DEBUG:
-            print('\n')
-            print('XX matrix: \n', XX)
-            print('XX matrix shape: \n', XX.shape)
-        M = np.cov(XX)
-        M = np.sqrt(np.diag(np.diag(M)))
-        M = torch.from_numpy(M)
-        mean = torch.zeros(M.shape[0], dtype=torch.double)
+        M = torch.eye(Xm.shape[0])
+        mean = torch.zeros(Xm.shape[0], dtype=torch.double)
     if DEBUG:
         print('\n')
         print('Mean matrix: \n', mean)

@@ -1,6 +1,7 @@
 import json
+import math
 import torch
-import torch.distributions as dist
+import torch.distributions as distributions
 from daphne import daphne
 # funcprimitives
 from evaluation_based_sampling import evaluate_program
@@ -104,7 +105,10 @@ def eval_path(path, l={}, Y={}, P={}):
                     print('Evaluated sample: ', output_)
 
             elif root == "observe*":
-                sample_eval = ["observe", tail]
+                try:
+                    sample_eval = ["observe", tail, p[2]]
+                except:
+                    sample_eval = ["observe", tail]
                 if DEBUG:
                     print('Sample AST: ', sample_eval)
                 output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
@@ -187,7 +191,7 @@ def traverse(G, node, visit={}, path=[], include_v=True):
 # Global vars
 global rho
 rho = {}
-DEBUG = True # Set to true to see intermediate outputs for debugging purposes
+DEBUG = False # Set to true to see intermediate outputs for debugging purposes
 def sample_from_joint(graph):
     """
     This function does ancestral sampling starting from the prior.
@@ -601,39 +605,3 @@ if __name__ == '__main__':
 
     # Run HW-2 Tests
     # run_hw2_tests()
-
-    # for i in range(1,6):
-    for i in range(1,2):
-        # # Note: this path should be with respect to the daphne path!
-        # ast = daphne(['graph', '-i', f'{program_path}/src/programs/{i}.daphne'])
-        # ast_path = f'./jsons/HW3/graph/{i}.json'
-        # with open(ast_path, 'w') as fout:
-        #     json.dump(ast, fout, indent=2)
-        # print('\n\n\nSample of prior of program {}:'.format(i))
-
-        if i == 1:
-            print('Running Graph-Based-sampling for Task number {}:'.format(str(i+1)))
-            ast_path = f'./jsons/HW3/graph/{i}.json'
-            with open(ast_path) as json_file:
-                ast = json.load(json_file)
-            # print(ast)
-            output = sample_from_joint(ast)
-            print(output)
-
-            print("--------------------------------")
-            print("Importance sampling Evaluation: ")
-            num_samples = 1000
-            all_output = likelihood_weighting_IS(ast=ast, L=num_samples)
-
-            W_k = 0.0
-            for k in range(num_samples):
-                r_l, W_l = all_output[k]
-                W_k += W_l
-
-            expected_output = 0.0
-            for l in range(num_samples):
-                r_l, W_l = all_output[l]
-                expected_output += ((W_l/W_k) * r_l)
-            print("Output: ", expected_output)
-            print("--------------------------------")
-            print("\n")
