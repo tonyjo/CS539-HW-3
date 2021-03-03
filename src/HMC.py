@@ -553,7 +553,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(2,3):
+    for i in range(1,3):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -594,7 +594,7 @@ if __name__ == '__main__':
                     joint_prob = joint_prob[0].tolist()
                 except:
                     pass
-                joint_log_prob.append(-joint_prob)
+                joint_log_prob.append(joint_prob)
 
             print("Posterior Mean: ", EX/S)
             print("--------------------------------")
