@@ -388,7 +388,7 @@ def sample_from_joint(graph):
 
 #--------------------------------GIBBS-with-MH----------------------------------
 def eval_free_vars(v, X, Y, P):
-    # Todo: depend on the X_var and not a new sample
+    # TODO: depend on the X_var and not a new sample
     # Setup Local vars
     l = {}
      # Add Y to local vars
@@ -593,7 +593,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(4,5):
+    for i in range(1,5):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -644,15 +644,16 @@ if __name__ == '__main__':
             print("\n")
 
             plt.plot(joint_log_prob)
-            plt.savefig(f'plots/1_MH_1.png')
             plt.xlabel("Iterations")
             plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/1_MH_1.png')
             plt.clf()
 
             plt.plot(ee)
             plt.xlabel("Iterations")
             plt.ylabel("Traces")
             plt.savefig(f'plots/1_MH_2.png')
+            plt.clf()
 
         elif i == 2:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
@@ -672,7 +673,7 @@ if __name__ == '__main__':
 
             print("--------------------------------")
             print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
-            num_samples = 100
+            num_samples = 10000
             all_outputs = Gibbs(graph=ast, S=num_samples)
 
             EX1 = 0.0
@@ -715,11 +716,13 @@ if __name__ == '__main__':
             plt.xlabel("Iterations")
             plt.ylabel("Slope-Trace")
             plt.savefig(f'plots/2_MH_2.png')
+            plt.clf()
 
             plt.plot(ex2)
             plt.xlabel("Iterations")
             plt.ylabel("Bias-Trace")
             plt.savefig(f'plots/2_MH_3.png')
+            plt.clf()
 
 
         elif i == 3:
@@ -773,6 +776,7 @@ if __name__ == '__main__':
             plt.xlabel("Iterations")
             plt.ylabel("Traces")
             plt.savefig(f'plots/3_MH_2.png')
+            plt.clf()
 
 
         elif i == 4:
@@ -788,7 +792,7 @@ if __name__ == '__main__':
 
             print("--------------------------------")
             print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
-            num_samples = 100
+            num_samples = 10000
             all_outputs = Gibbs(graph=ast, S=num_samples)
 
             EX = 0.0
@@ -822,8 +826,7 @@ if __name__ == '__main__':
                     joint_prob = joint_prob[0].tolist()
                 except:
                     pass
-
-                joint_log_prob.append(-joint_prob)
+                joint_log_prob.append(joint_prob)
 
             print("Posterior Mean: ", EX/num_samples)
             print("--------------------------------")
