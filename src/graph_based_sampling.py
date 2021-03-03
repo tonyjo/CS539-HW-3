@@ -7,9 +7,9 @@ from daphne import daphne
 from evaluation_based_sampling import evaluate_program
 from tests import is_tol, run_prob_test,load_truth
 # Useful functions
-from utils import _hashmap, _vector, _totensor
-from utils import _put, _remove, _append, _get
-from utils import _squareroot, _mat_repmat, _mat_transpose
+from primitives import _hashmap, _vector, _totensor
+from primitives import _put, _remove, _append, _get
+from primitives import _squareroot, _mat_repmat, _mat_transpose
 
 # 2 or more var OPS
 basic_ops = {'+':torch.add,

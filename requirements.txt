@@ -5,4 +5,3 @@ torchvision==0.5.0
 torchdiffeq==0.0.1
 sacred==0.8.1
 scipy==1.6.0
-
