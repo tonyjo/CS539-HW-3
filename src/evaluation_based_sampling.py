@@ -531,10 +531,10 @@ def evaluate_program(ast, sig={}, l={}):
                 sampler, sig = evaluate_program(tail, sig=sig, l=l)
                 if DEBUG:
                     print('Sampler: ', sampler)
-                # IF sample object then take a sample
                 try:
                     sample_ = sampler.sample()
                 except:
+                    # For some reason it is not a sampler object
                     sample_ = sampler
                 # Obtain likelihood-- cases where it can be obtained
                 try:

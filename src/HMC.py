@@ -1,6 +1,8 @@
 import json
 import math
+import copy
 import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.distributions as distributions
 from daphne import daphne
@@ -190,14 +192,15 @@ def traverse(G, node, visit={}, path=[], include_v=True):
 
 #-------------------------------------HMC---------------------------------------
 # Global vars
-DEBUG = True # Set to true to see intermediate outputs for debugging purposes
-def grad_UX(X, Y, X_, Y_):
+DEBUG = False # Set to true to see intermediate outputs for debugging purposes
+def grad_UX(X, Y, P):
+    X_, Y_ = redo_maps(X=X, Y=Y, P=P)
     Ex = 0.0
     Ey = 0.0
     for x in X_.keys():
         Ex = Ex + X_[x].log_prob(X[x])
     for y in Y_.keys():
-        Ey = Ey + torch.log(Y_[y])
+        Ey = Ey + Y_[y].log_prob(Y[y])
     Eu = -1.0*(Ex + Ey)
 
     # Compute grads
@@ -208,17 +211,17 @@ def grad_UX(X, Y, X_, Y_):
     for x in X.keys():
         dU[x] = X[x].grad
     for y in Y_.keys():
-        dU[y] = Y_[y].grad
+        dU[y] = Y[y].grad
 
     return dU
 
-def leapFrog(X, Y, X_, Y_, R_0, T, eps):
-    gradU = grad_UX(X=X, Y=Y, X_=X_, Y_=Y_)
+def leapFrog(X, Y, P, R_0, T, eps):
+    gradU = grad_UX(X=X, Y=Y, P=P)
     if DEBUG:
         print("Gradients: ", gradU)
 
     R_12 = {}
-    for lvar in X_.keys():
+    for lvar in X.keys():
         R_12[lvar] = R_0[lvar] - (0.5) * eps * gradU[lvar]
     if DEBUG:
         print("R12: ", R_12)
@@ -230,7 +233,7 @@ def leapFrog(X, Y, X_, Y_, R_0, T, eps):
         # Add gradient support back
         for x in X.keys():
             X[x].requires_grad=True
-        gradU_t = grad_UX(X=X, Y=Y, X_=X_, Y_=Y_)
+        gradU_t = grad_UX(X=X, Y=Y, P=P)
         for x in R_12.keys():
             R_12[x] = R_12[x] - (eps * gradU_t[x])
 
@@ -243,21 +246,24 @@ def leapFrog(X, Y, X_, Y_, R_0, T, eps):
         X_T[x].requires_grad=True
 
     R_T = {}
-    dU_t = grad_UX(X_=X_, Y_=Y_, X=X, Y=Y)
+    dU_t = grad_UX(X=X, Y=Y, P=P)
     for x in R_12.keys():
         R_T[x] = R_12[x] - (0.5 * eps * dU_t[x])
 
     return X_T, R_T
 
-def computeH(X, Y, X_, Y_, R, M):
-    # Compute U
-    Ex = 0.0
-    Ey = 0.0
-    for x in X_.keys():
-        Ex = Ex + X_[x].log_prob(X[x])
-    for y in Y_.keys():
-        Ey = Ey + torch.log(Y_[y])
-    U  = -1.0*(Ex + Ey)
+def computeH(X, Y, P, R, M):
+    X_, Y_ = redo_maps(X=X, Y=Y, P=P)
+    with torch.no_grad():
+        # Compute U
+        Ex = 0.0
+        Ey = 0.0
+        for x in X_.keys():
+            Ex = Ex + X_[x].log_prob(X[x])
+        for y in Y_.keys():
+            Ey = Ey + Y_[y].log_prob(Y[y])
+            # Ey = Ey + torch.log(Y_[y])
+        U  = -1.0*(Ex + Ey)
 
     # Compute K
     Rm = torch.zeros(0, dtype=torch.float32)
@@ -283,21 +289,144 @@ def computeH(X, Y, X_, Y_, R, M):
         print('RM.T: ', (torch.transpose(Rm, 0, 1)).shape)
 
     if len(X.keys()) == 1:
-        M1 = 1/M # to avoid zero computation, just in case
-        K = Rm * M1 * Rm
+        K = Rm * Rm
         K = K/2.0
-        K = K[0]
+        K = -1.0 * K[0]
     else:
-
-        M1 = torch.inverse(M)
-        K1 = torch.matmul(torch.transpose(Rm, 0, 1), M1.type(torch.float32))
-        K  = torch.matmul(K1, Rm)
+        #M1 = torch.inverse(M)
+        #K1 = torch.matmul(torch.transpose(Rm, 0, 1), M1.type(torch.float32))
+        K = torch.matmul(torch.transpose(Rm, 0, 1), Rm)
         K = K/2.0
-        K = K[0]
+        K = -1.0 * K[0]
 
     H_ = U + K
 
     return H_
+
+def redo_maps(X, Y, P):
+    X_map = {}
+    # Setup local vars
+    l = {**X}
+    for lv in X.keys():
+        p = P[lv]
+        root = p[0]
+        tail = p[1]
+        if root == "sample*":
+            output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+            X_map[lv] = output_
+        else:
+            continue
+    if DEBUG:
+        print('\n')
+        print('Evaluted Latent dist: ', X_map)
+        print('\n')
+    del l
+
+    Y_map = {}
+    # Setup local vars
+    with torch.no_grad():
+        l = {}
+        for x0 in X.keys():
+            l[x0] = copy.deepcopy(X[x0])
+            l[x0].requires_grad = False
+        for yvar in Y.keys():
+            p = P[yvar]
+            root = p[0]
+            tail = p[1]
+            if root == "observe*":
+                output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+                Y_map[yvar] = output_
+            else:
+                continue
+    # import pdb; pdb.set_trace()
+    if DEBUG:
+        print('\n')
+        print('Evaluted Observed Vars dist: ', Y_map)
+        print('\n')
+
+    return X_map, Y_map
+
+
+def initial_setup_evals_and_maps(X, Y, P, G):
+    X_0 = {}
+    for lvar in X:
+        path = []
+        path = traverse(G=G, node=lvar, visit={}, path=path)
+        if DEBUG:
+            print('Evaluated graph path: ', path)
+        # List Reverse
+        path.reverse()
+        # Evaluate path
+        output, sigma = eval_path(path, l={}, Y=Y, P=P)
+        if DEBUG:
+            print('Evaluated reverse graph path: ', path)
+            print('Evaluated graph output: ', output)
+        output_ = output[-1]
+        try:
+            output_ = torch.tensor(output_, requires_grad=True, dtype=torch.float32)
+        except:
+            output_ = torch.tensor(output_[0], requires_grad=True, dtype=torch.float32)
+        X_0[lvar] = output_
+    # import pdb; pdb.set_trace()
+    if DEBUG:
+        print('\n')
+        print('Evaluted Latent Vars: ', X_0)
+        print('\n')
+
+    Y_0 = {}
+    for yvar in Y.keys():
+        output_ = Y[yvar]
+        if isinstance(output_, int):
+            output_ = [float(output_)]
+        output_ = torch.tensor(output_, requires_grad=True)
+        Y_0[yvar] = output_
+    # import pdb; pdb.set_trace()
+    if DEBUG:
+        print('\n')
+        print('Evaluted Observed Vars: ', Y_0)
+        print('\n')
+
+    X_map = {}
+    # Setup local vars
+    l = {**X_0}
+    for lv in X:
+        p = P[lv]
+        root = p[0]
+        tail = p[1]
+        if root == "sample*":
+            output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+            X_map[lv] = output_
+        else:
+            continue
+    if DEBUG:
+        print('\n')
+        print('Evaluted Latent dist: ', X_map)
+        print('\n')
+    del l
+
+    Y_map = {}
+    # Setup local vars
+    with torch.no_grad():
+        l = {}
+        for x0 in X_0.keys():
+            l[x0] = copy.deepcopy(X_0[x0])
+            l[x0].requires_grad = False
+        for yvar in Y.keys():
+            p = P[yvar]
+            root = p[0]
+            tail = p[1]
+            if root == "observe*":
+                output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
+                Y_map[yvar] = output_
+            else:
+                continue
+    # import pdb; pdb.set_trace()
+    if DEBUG:
+        print('\n')
+        print('Evaluted Observed Vars dist: ', Y_map)
+        print('\n')
+
+    return X_0, Y_0, X_map, Y_map
 
 
 def HMC(graph, S, T, eps):
@@ -329,60 +458,7 @@ def HMC(graph, S, T, eps):
         print('Latent Vars: ', X)
         print('\n')
 
-    X_0 = {}
-    for lvar in X:
-        path = []
-        path = traverse(G=G_, node=lvar, visit={}, path=path)
-        if DEBUG:
-            print('Evaluated graph path: ', path)
-        # List Reverse
-        path.reverse()
-        # Evaluate path
-        output, sigma = eval_path(path, l={}, Y=Y, P=P)
-        if DEBUG:
-            print('Evaluated reverse graph path: ', path)
-            print('Evaluated graph output: ', output)
-        output_ = output[-1]
-        try:
-            output_ = torch.tensor(output_, requires_grad=True, dtype=torch.float32)
-        except:
-            output_ = torch.tensor(output_[0], requires_grad=True, dtype=torch.float32)
-        X_0[lvar] = output_
-    # import pdb; pdb.set_trace()
-    if DEBUG:
-        print('\n')
-        print('Evaluted Latent Vars: ', X_0)
-        print('\n')
-
-    X_map = {}
-    # Setup local vars
-    l = {**X_0}
-    for lv in X:
-        p = P[lv]
-        root = p[0]
-        tail = p[1]
-        if root == "sample*":
-            output_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
-            X_map[lv] = output_
-        else:
-            continue
-    if DEBUG:
-        print('\n')
-        print('Evaluted Latent dist: ', X_map)
-        print('\n')
-
-    Y_map = {}
-    for yvar in Y.keys():
-        output_ = Y[yvar]
-        if isinstance(output_, int):
-            output_ = [float(output_)]
-        output_ = torch.tensor(output_, requires_grad=True)
-        Y_map[yvar] = output_
-    # import pdb; pdb.set_trace()
-    if DEBUG:
-        print('\n')
-        print('Evaluted Observed Vars: ', Y_map)
-        print('\n')
+    X_0, Y_0, X_map, Y_map = initial_setup_evals_and_maps(X=X, Y=Y, P=P, G=G_)
 
     # Compute covariance
     Xm = torch.zeros(0, dtype=torch.float32)
@@ -408,11 +484,12 @@ def HMC(graph, S, T, eps):
         print('X matrix Shape: \n', Xm.shape)
 
     if Xm.size == 1:
-        mean = torch.tensor([0.0])
-        M = torch.tensor([1.0])
+        mean = torch.tensor([0.0], dtype=torch.float32)
+        M = torch.tensor([1.0], dtype=torch.float32)
     else:
-        M = torch.eye(Xm.shape[0])
-        mean = torch.zeros(Xm.shape[0], dtype=torch.double)
+        mean = torch.zeros(Xm.shape[0], dtype=torch.float32)
+        M = torch.eye(Xm.shape[0], dtype=torch.float32)
+
     if DEBUG:
         print('\n')
         print('Mean matrix: \n', mean)
@@ -435,17 +512,35 @@ def HMC(graph, S, T, eps):
         for lvar in X_0.keys():
             R_0[lvar] = R_0_[i]
             i += 1
-        XT, RT = leapFrog(X=X_0, Y=Y, X_=X_map, Y_=Y_map, R_0=R_0, T=T, eps=eps)
+        XT, RT = leapFrog(X=X_0, Y=Y_0, P=P, R_0=R_0, T=T, eps=eps)
         u = (uniform_dist.sample()).item()
-        accept1 = computeH(X=XT,  Y=Y, X_=X_map, Y_=Y_map, R=RT, M=M)
-        accept2 = computeH(X=X_0, Y=Y, X_=X_map, Y_=Y_map, R=R_0, M=M)
+        accept1 = computeH(X=XT,  Y=Y_0, P=P, R=RT,  M=M)
+        accept2 = computeH(X=X_0, Y=Y_0, P=P, R=R_0, M=M)
         accept = torch.exp((-1.0 * accept1) + accept2)
         if DEBUG:
             print('\n')
             print('Accept: ', accept)
         if u < accept:
-            X_0 = XT
-        all_outputs.append([X_0])
+            X_0 = {**XT}
+        # Compute joint
+        joint_log_prob = 0.0
+        for lvar in X_0.keys():
+            p = P[lvar]
+            x1 = X_0[lvar]
+            root = p[0]
+            tail = p[1]
+            if root == "sample*":
+                dist_, sigma = evaluate_program(ast=[tail], sig={}, l={})
+                if isinstance(x1, list):
+                    x1 = x1[0]
+                x1_value = dist_.log_prob(x1)
+                try:
+                    joint_log_prob += x1_value
+                except:
+                    joint_log_prob += x1_value[0]
+            else:
+                continue
+        all_outputs.append([X_0, joint_log_prob])
 
     return all_outputs
 
@@ -458,7 +553,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(1,2):
+    for i in range(2,3):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -476,11 +571,46 @@ if __name__ == '__main__':
             # output = sample_from_joint(ast)
             # print("Evaluation Output: \n", output)
             # print("\n")
+            S = 10000
+            T = 10
+            eps = 0.01
+            all_outputs = HMC(graph=ast, S=S, T=T, eps=eps)
+            # print("Evaluation Output: \n", all_outputs)
+            # print("\n")
+            print("--------------------------------")
+            print("HMC Evaluation: ")
+            EX = 0.0
+            joint_log_prob = []
+            ex1 = []
+            for i in range(S):
+                Xs, joint_prob = all_outputs[i]
+                try:
+                    EX += Xs['sample2']
+                    ex1.append(Xs['sample2'])
+                except:
+                    EX += Xs['sample2'][0]
+                    ex1.append(Xs['sample2'][0])
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+                joint_log_prob.append(-joint_prob)
 
-            output = HMC(graph=ast, S=1, T=10, eps=0.001)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
+            print("Posterior Mean: ", EX/S)
+            print("--------------------------------")
             print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/1_HMC_1.png')
+            plt.clf()
+
+            plt.plot(ex1)
+            plt.xlabel("Iterations")
+            plt.ylabel("Slope-Trace")
+            plt.savefig(f'plots/1_HMC_2.png')
+            plt.clf()
 
         if i == 2:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
@@ -492,8 +622,58 @@ if __name__ == '__main__':
             # output = sample_from_joint(ast)
             # print("Evaluation Output: \n", output)
             # print("\n")
-
-            output = HMC(graph=ast, S=1, T=1, eps=0.01)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
+            S = 10000
+            T = 10
+            eps = 0.01
+            print("--------------------------------")
+            print("HMC Evaluation: ")
+            all_outputs = HMC(graph=ast, S=S, T=T, eps=eps)
+            #print("Evaluation Output: \n", output)
             print("\n")
+            EX1 = 0.0
+            EX2 = 0.0
+            ex1 = []
+            ex2 = []
+            joint_log_prob = []
+            for i in range(S):
+                Xs, joint_prob = all_outputs[i]
+                try:
+                    EX1 += Xs['sample1']
+                    ex1.extend(Xs['sample1'])
+                except:
+                    EX1 += Xs['sample1'][0]
+                    ex1.extend(Xs['sample1'])
+                try:
+                    EX2 += Xs['sample2']
+                    ex2.extend(Xs['sample2'])
+                except:
+                    EX2 += Xs['sample2'][0]
+                    ex2.extend(Xs['sample2'])
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+                joint_log_prob.append(joint_prob)
+
+            print("Posterior Bias Mean: ",  EX2/S)
+            print("Posterior Slope Mean: ", EX1/S)
+            print("--------------------------------")
+            print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/2_HMC_1.png')
+            plt.clf()
+
+            plt.plot(ex1)
+            plt.xlabel("Iterations")
+            plt.ylabel("Slope-Trace")
+            plt.savefig(f'plots/2_HMC_2.png')
+            plt.clf()
+
+            plt.plot(ex2)
+            plt.xlabel("Iterations")
+            plt.ylabel("Bias-Trace")
+            plt.savefig(f'plots/2_HMC_3.png')
+#-------------------------------------------------------------------------------

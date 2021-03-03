@@ -3,6 +3,7 @@ import math
 import torch
 import torch.distributions as distributions
 from daphne import daphne
+import matplotlib.pyplot as plt
 # funcprimitives
 from evaluation_based_sampling import evaluate_program
 from tests import is_tol, run_prob_test,load_truth
@@ -387,9 +388,9 @@ def sample_from_joint(graph):
 
 #--------------------------------GIBBS-with-MH----------------------------------
 def eval_free_vars(v, X, Y, P):
+    # Todo: depend on the X_var and not a new sample
     # Setup Local vars
     l = {}
-    sigma = {}
      # Add Y to local vars
     for y in Y.keys():
         l[y] = Y[y]
@@ -412,7 +413,7 @@ def eval_free_vars(v, X, Y, P):
         sample_eval = ["sample", tail]
         if DEBUG:
             print('Sample AST: ', sample_eval)
-        output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
+        output_, sigma = evaluate_program(ast=[sample_eval], sig={}, l=l)
         if DEBUG:
             print('Evaluated sample: ', output_)
 
@@ -423,7 +424,7 @@ def eval_free_vars(v, X, Y, P):
             sample_eval = ["observe", tail]
         if DEBUG:
             print('Sample AST: ', sample_eval)
-        output_, sigma = evaluate_program(ast=[sample_eval], sig=sigma, l=l)
+        output_, sigma = evaluate_program(ast=[sample_eval], sig={}, l=l)
         if DEBUG:
             print('Evaluated sample: \n', output_, '\n', sigma)
             print('\n')
@@ -435,11 +436,16 @@ def eval_free_vars(v, X, Y, P):
 
 
 def GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y, G):
-    d  = Q_x[x]
-    d_ = Q_x[x]
-    x_x = X_[x]
+    d    = Q_x[x]
+    d_   = Q_x[x]
+    x_x  = X_[x]
     x_nx = X_n[x]
-    log_alpha = d.log_prob(X_[x]) - d_.log_prob(X_n[x])
+    if isinstance(x_x, list):
+        x_x = x_x[0]
+    if isinstance(x_x, list):
+        x_nx = x_nx[0]
+    log_alpha = d.log_prob(x_x) - d_.log_prob(x_nx)
+    # TODO: Check this
     Vx = A[x]
     # import pdb; pdb.set_trace()
     if DEBUG:
@@ -448,23 +454,26 @@ def GibbsAccept(x, X_, X_n, Q_x, V, X, O, A, P, Y, G):
         print('Distribution-2: ', d_)
         print('Verticies: ', Vx, ' that depend on ', x)
         print('\n')
+
     for v in Vx:
-        _, sigma  = eval_free_vars(v=v, X=X_n, Y=Y, P=P)
-        log_alpha = log_alpha - sigma["logW"]
-        _, sigma  = eval_free_vars(v=v, X=X_, Y=Y, P=P)
-        log_alpha = log_alpha + sigma["logW"]
+        _, sig  = eval_free_vars(v=v, X=X_n, Y=Y, P=P)
+        log_alpha = log_alpha + sig["logW"]
+        _, sig  = eval_free_vars(v=v, X=X_, Y=Y, P=P)
+        log_alpha = log_alpha - sig["logW"]
 
     # import pdb; pdb.set_trace()
     if torch.is_tensor(log_alpha):
         log_alpha = log_alpha.tolist()
-
     if DEBUG:
         print('Log Alpha:', log_alpha)
 
     if isinstance(log_alpha, list):
         log_alpha = log_alpha[0]
     # Change from log
-    alpha = math.exp(log_alpha)
+    try:
+        alpha = math.exp(log_alpha)
+    except OverflowError:
+        alpha = 0.5
 
     return alpha
 
@@ -473,7 +482,7 @@ def GibbsStep(X_, Q_x, V, X, O, A, P, Y, G):
     uniform_dist = distributions.uniform.Uniform(low=0.0, high=1.0)
     for x in X:
         d = Q_x[x]
-        X_n = X_
+        X_n = {**X_}
         X_n[x] = d.sample()
         alpha = GibbsAccept(x=x, X_=X_, X_n=X_n, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G)
         u = (uniform_dist.sample()).item()
@@ -481,19 +490,8 @@ def GibbsStep(X_, Q_x, V, X, O, A, P, Y, G):
             print('Alpha: ', alpha)
             print('Unf: ', u)
             print('X_:', X_)
-        if isinstance(alpha, list):
-            all_true = True
-            for a in alpha:
-                if u < a:
-                    continue
-                else:
-                    all_true = False
-                    break
-            if all_true:
-                X_ = X_n
-        else:
-            if u < alpha:
-                X_ = X_n
+        if u < alpha:
+            X_ = {**X_n}
     return X_
 
 def Gibbs(graph, S):
@@ -560,21 +558,28 @@ def Gibbs(graph, S):
         print('Evaluted Latent Vars dist.: ', Q_x)
 
     all_outputs = []
-    joint_log_prob = 0.0
     for x in range(S):
         X_s = GibbsStep(X_=X_s_minus_1, Q_x=Q_x, V=V, X=X, O=O, A=A, P=P, Y=Y, G=G_)
         # Compute joint
         joint_log_prob = 0.0
         for lvar in X_s.keys():
             p = P[lvar]
-            x = X_s[lvar]
+            x1 = X_s[lvar]
             root = p[0]
             tail = p[1]
             if root == "sample*":
                 dist_, sigma = evaluate_program(ast=[tail], sig={}, l=l)
-                joint_log_prob += dist.log_prob(x)
+                if isinstance(x1, list):
+                    x1 = x1[0]
+                x1_value = dist_.log_prob(x1)
+                try:
+                    joint_log_prob += x1_value
+                except:
+                    joint_log_prob += x1_value[0]
             else:
                 continue
+        # Update
+        X_s_minus_1 = {**X_s}
         # Collect
         all_outputs.append([X_s, joint_log_prob])
 
@@ -588,7 +593,7 @@ if __name__ == '__main__':
 
     # run_probabilistic_tests()
 
-    for i in range(3,4):
+    for i in range(4,5):
         ## Note: this path should be with respect to the daphne path!
         # ast = daphne(['graph', '-i', f'{daphne_path}/src/programs/{i}.daphne'])
         # ast_path = f'./jsons/graphs/final/{i}.json'
@@ -607,10 +612,47 @@ if __name__ == '__main__':
             # print("Evaluation Output: \n", output)
             # print("\n")
 
-            output = Gibbs(graph=ast, S=1)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
+            # output = Gibbs(graph=ast, S=1)
+            # print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            print("--------------------------------")
+            print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
+            num_samples = 10000
+            all_outputs = Gibbs(graph=ast, S=num_samples)
+
+            EX = 0.0
+            ee = []
+            joint_log_prob = []
+            for i in range(num_samples):
+                Xs, joint_prob = all_outputs[i]
+                try:
+                    EX += Xs['sample2']
+                    ee.extend(Xs['sample2'])
+                except:
+                    EX += Xs['sample2'][0]
+                    ee.extend(Xs['sample2'][0])
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+                joint_log_prob.append(-joint_prob)
+
+            print("Posterior Mean: ", EX/num_samples)
+            print("--------------------------------")
             print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.savefig(f'plots/1_MH_1.png')
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.clf()
+
+            plt.plot(ee)
+            plt.xlabel("Iterations")
+            plt.ylabel("Traces")
+            plt.savefig(f'plots/1_MH_2.png')
 
         elif i == 2:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
@@ -623,10 +665,61 @@ if __name__ == '__main__':
             # print("Evaluation Output: \n", output)
             # print("\n")
 
-            output = Gibbs(graph=ast, S=1)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
+            # output = Gibbs(graph=ast, S=1)
+            # print("Gibbs Sampling with Metropolis-Hastings Updates: ")
+            # print("Evaluation Output: \n", output)
+            # print("\n")
+
+            print("--------------------------------")
+            print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
+            num_samples = 100
+            all_outputs = Gibbs(graph=ast, S=num_samples)
+
+            EX1 = 0.0
+            EX2 = 0.0
+            ex1 = []
+            ex2 = []
+            joint_log_prob = []
+            for i in range(num_samples):
+                Xs, joint_prob = all_outputs[i]
+                try:
+                    EX1 += Xs['sample1']
+                    ex1.extend(Xs['sample1'])
+                except:
+                    EX1 += Xs['sample1'][0]
+                    ex1.extend(Xs['sample1'])
+                try:
+                    EX2 += Xs['sample2']
+                    ex2.extend(Xs['sample2'])
+                except:
+                    EX2 += Xs['sample2'][0]
+                    ex2.extend(Xs['sample2'])
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+                joint_log_prob.append(joint_prob)
+
+            print("Posterior Bias Mean: ",  EX2/num_samples)
+            print("Posterior Slope Mean: ", EX1/num_samples)
+            print("--------------------------------")
             print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/2_MH_1.png')
+            plt.clf()
+
+            plt.plot(ex1)
+            plt.xlabel("Iterations")
+            plt.ylabel("Slope-Trace")
+            plt.savefig(f'plots/2_MH_2.png')
+
+            plt.plot(ex2)
+            plt.xlabel("Iterations")
+            plt.ylabel("Bias-Trace")
+            plt.savefig(f'plots/2_MH_3.png')
 
 
         elif i == 3:
@@ -640,11 +733,47 @@ if __name__ == '__main__':
             # print("Evaluation Output: ", output)
             # print("\n")
 
-            output = Gibbs(graph=ast, S=1)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
-            print("--------------")
+            print("--------------------------------")
+            print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
+            num_samples = 10000
+            all_outputs = Gibbs(graph=ast, S=num_samples)
+
+            EX = 0.0
+            joint_log_prob = []
+            ee = []
+            for i in range(num_samples):
+                Xs, joint_prob = all_outputs[i]
+                if isinstance(Xs['sample7'], list):
+                    e1 = Xs['sample7'][0]
+                else:
+                    e1 = Xs['sample7']
+                if isinstance(Xs['sample9'], list):
+                    e2 = Xs['sample9'][0]
+                else:
+                    e2 = Xs['sample9']
+                EX += float(torch.eq(e1, e2).item()) # ("=", "sample7", "sample9")
+                ee.append(float(torch.eq(e1, e2).item()))
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+                joint_log_prob.append(-joint_prob)
+
+            print("Posterior Mean: ", EX/num_samples)
+            print("--------------------------------")
             print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/3_MH_1.png')
+            plt.clf()
+
+            plt.plot(ee)
+            plt.xlabel("Iterations")
+            plt.ylabel("Traces")
+            plt.savefig(f'plots/3_MH_2.png')
+
 
         elif i == 4:
             print('Running Graph-Based-sampling for Task number {}:'.format(str(i)))
@@ -657,7 +786,58 @@ if __name__ == '__main__':
             # print("Evaluation Output: ", output)
             # print("\n")
 
-            output = Gibbs(graph=ast, S=1)
-            print("Gibbs Sampling with Metropolis-Hastings Updates: ")
-            print("Evaluation Output: \n", output)
+            print("--------------------------------")
+            print("Gibbs Sampling with Metropolis-Hastings Updates Evaluation: ")
+            num_samples = 100
+            all_outputs = Gibbs(graph=ast, S=num_samples)
+
+            EX = 0.0
+            joint_log_prob = []
+            ee = []
+            for i in range(num_samples):
+                Xs, joint_prob = all_outputs[i]
+                # ["if",["=","sample2",true],"sample3","sample4"]
+                if isinstance(Xs['sample2'], list):
+                    e1 = Xs['sample2'][0].item()
+                else:
+                    e1 = Xs['sample2'].item()
+                if isinstance(Xs['sample3'], list):
+                    e2 = Xs['sample3'][0].item()
+                else:
+                    e2 = Xs['sample3'].item()
+                if isinstance(Xs['sample4'], list):
+                    e3 = Xs['sample4'][0].item()
+                else:
+                    e3 = Xs['sample4'].item()
+
+                EX += e1
+                if e1 == True:
+                    ee.append(e2)
+                    EX += e2
+                else:
+                    ee.append(e3)
+                    EX += e3
+
+                try:
+                    joint_prob = joint_prob[0].tolist()
+                except:
+                    pass
+
+                joint_log_prob.append(-joint_prob)
+
+            print("Posterior Mean: ", EX/num_samples)
+            print("--------------------------------")
             print("\n")
+
+            plt.plot(joint_log_prob)
+            plt.xlabel("Iterations")
+            plt.ylabel("Joint-Log-Probability")
+            plt.savefig(f'plots/4_MH_1.png')
+            plt.clf()
+
+            plt.plot(ee)
+            plt.xlabel("Iterations")
+            plt.ylabel("Traces")
+            plt.savefig(f'plots/4_MH_2.png')
+            plt.clf()
+#-------------------------------------------------------------------------------
