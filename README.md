@@ -24,17 +24,17 @@ pip3 install -r requirements.txt
 python3 evaluation_based_sampling.py
 ```
 
-2. Change the daphne path in `graph_based_sampling.py` and run:
+2. (IS) Change the daphne path in `graph_based_sampling.py` and run:
 ```bash
 python3 evaluation_based_sampling.py
 ```
 
-2. Change the daphne path in `MH-gibbs.py` and run:
+3. (MH Gibbs) Change the daphne path in `MH-gibbs.py` and run:
 ```bash
 python3 MH-gibbs.py
 ```
 
-2. Change the daphne path in `HMC.py` and run:
+4. (HMC) Change the daphne path in `HMC.py` and run:
 ```bash
 python3 HMC.py
 ```
