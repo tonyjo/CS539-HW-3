@@ -121,7 +121,7 @@ def evaluate_program(ast, sig={}, l={}):
                 if isinstance(eval_1, list):
                     eval_1 = eval_1[0]
                 if isinstance(eval_2, list):
-                    eval_2 = eval_1[0]
+                    eval_2 = eval_2[0]
                 if DEBUG:
                     print('Basic OP eval-1: ', eval_1)
                     print('Basic OP eval-2: ', eval_2)
